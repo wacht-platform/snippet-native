@@ -18,7 +18,8 @@ class AddInstanceScreen extends StatefulWidget {
   State<AddInstanceScreen> createState() => _AddInstanceScreenState();
 }
 
-class _AddInstanceScreenState extends State<AddInstanceScreen> {
+class _AddInstanceScreenState extends State<AddInstanceScreen>
+    with WidgetsBindingObserver {
   final _paste = TextEditingController();
   PermissionStatus? _perm;
   bool _busy = false;
@@ -27,13 +28,25 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Permission.camera.request().then((s) {
       if (mounted) setState(() => _perm = s);
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-check in case the permission was toggled in system settings while away.
+    if (state == AppLifecycleState.resumed) {
+      Permission.camera.status.then((s) {
+        if (mounted && s != _perm) setState(() => _perm = s);
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _paste.dispose();
     super.dispose();
   }
@@ -119,7 +132,8 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
                 : null;
             if (raw != null && raw.trim().isNotEmpty) _connect(raw);
           },
-          errorBuilder: (context, error) => const _CameraOff(permanent: false),
+          errorBuilder: (context, error) =>
+              _CameraOff(permanent: false, detail: error.toString()),
         ),
         IgnorePointer(
           child: Container(
@@ -217,7 +231,8 @@ class _Hint extends StatelessWidget {
 class _CameraOff extends StatelessWidget {
   final bool permanent;
   final VoidCallback? onAllow;
-  const _CameraOff({required this.permanent, this.onAllow});
+  final String? detail;
+  const _CameraOff({required this.permanent, this.onAllow, this.detail});
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -230,9 +245,19 @@ class _CameraOff extends StatelessWidget {
           const Icon(Icons.no_photography_outlined,
               color: AppColors.muted, size: 44),
           const SizedBox(height: 14),
-          const Text('Camera off — paste the connection string below',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.muted)),
+          Text(
+            detail == null
+                ? 'Camera off — paste the connection string below'
+                : 'Scanner error — paste below instead',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.muted),
+          ),
+          if (detail != null) ...[
+            const SizedBox(height: 8),
+            Text(detail!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+          ],
           if (onAllow != null) ...[
             const SizedBox(height: 16),
             FilledButton(

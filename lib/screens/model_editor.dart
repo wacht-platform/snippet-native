@@ -16,7 +16,10 @@ bool _needsBaseUrl(String provider) =>
     provider == 'openai-compatible' || provider == 'openrouter';
 
 bool _defaultImages(String provider) =>
-    provider == 'anthropic' || provider == 'gemini' || provider == 'openai';
+    provider == 'anthropic' ||
+    provider == 'gemini' ||
+    provider == 'openai' ||
+    provider == 'chatgpt';
 
 /// Add or edit an API-key model profile. ChatGPT-subscription (OAuth) is set up
 /// from the TUI, not here.
@@ -46,8 +49,9 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
   void initState() {
     super.initState();
     final e = widget.existing;
+    // Keep the real provider when editing (e.g. a chatgpt profile set up in the TUI);
+    // new profiles default to an API-key provider.
     _provider = e?.provider ?? 'openai-compatible';
-    if (!_providers.contains(_provider)) _provider = 'openai-compatible';
     _name = TextEditingController(text: e?.name ?? '');
     _baseUrl = TextEditingController(text: e?.baseUrl ?? '');
     _model = TextEditingController(text: e?.model ?? '');
@@ -101,7 +105,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
               initialValue: _provider,
               decoration: const InputDecoration(labelText: 'Provider'),
               dropdownColor: AppColors.surfaceAlt,
-              items: _providers
+              items: <String>{..._providers, _provider}
                   .map((p) => DropdownMenuItem(value: p, child: Text(p)))
                   .toList(),
               onChanged: _isEdit
@@ -144,17 +148,26 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            TextField(
-              controller: _key,
-              obscureText: true,
-              autocorrect: false,
-              decoration: InputDecoration(
-                labelText: 'API key',
-                hintText: _isEdit && widget.existing!.hasKey
-                    ? 'leave blank to keep current key'
-                    : 'paste your API key',
+            if (_provider == 'chatgpt')
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  'ChatGPT uses the subscription login set up in the TUI — no API key here.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 13),
+                ),
+              )
+            else
+              TextField(
+                controller: _key,
+                obscureText: true,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  labelText: 'API key',
+                  hintText: _isEdit && widget.existing!.hasKey
+                      ? 'leave blank to keep current key'
+                      : 'paste your API key',
+                ),
               ),
-            ),
             const SizedBox(height: 6),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
