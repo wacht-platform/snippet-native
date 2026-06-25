@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../models.dart';
+import '../theme.dart';
 import 'scan.dart';
 
-/// Add a daemon by pasting or scanning the connection string `snippet serve`
-/// prints: the public URL carrying the token (https://host/?token=...). Returns
-/// the validated [Instance] via pop. Raw JSON {url,token} is also accepted.
+/// Add a daemon by scanning the serve QR or pasting the connection string: the
+/// public URL carrying the token (https://host/?token=...). Raw JSON also works.
 class AddInstanceScreen extends StatefulWidget {
   const AddInstanceScreen({super.key});
 
@@ -29,7 +29,6 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
     super.dispose();
   }
 
-  /// Parse a connection string into (baseUrl, token).
   (String, String)? _parse(String raw) {
     raw = raw.trim();
     final uri = Uri.tryParse(raw);
@@ -40,7 +39,6 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
       final port = uri.hasPort ? ':${uri.port}' : '';
       return ('${uri.scheme}://${uri.host}$port', token);
     }
-    // Fallback: JSON {url, token}.
     try {
       final m = jsonDecode(raw);
       if (m is Map && m['url'] is String && m['token'] is String) {
@@ -68,9 +66,7 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
     });
     try {
       final parsed = _parse(_conn.text);
-      if (parsed == null) {
-        throw 'That is not a valid connection string.';
-      }
+      if (parsed == null) throw 'That is not a valid connection string.';
       final (url, token) = parsed;
       final client = DaemonClient(url, token);
       if (!await client.health()) {
@@ -96,40 +92,36 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
+            const Text(
               'Run `snippet serve`, then scan its QR or paste the connection '
               'string it prints.',
-              style: Theme.of(context).textTheme.bodyMedium,
+              style: TextStyle(color: AppColors.muted, height: 1.4),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 22),
             OutlinedButton.icon(
               onPressed: _busy ? null : _scan,
-              icon: const Icon(Icons.qr_code_scanner),
+              icon: const Icon(Icons.qr_code_scanner, color: AppColors.accent),
               label: const Text('Scan QR'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 22),
             Row(
               children: [
                 const Expanded(child: Divider()),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text('or paste',
-                      style: TextStyle(color: Theme.of(context).hintColor)),
+                      style: TextStyle(color: AppColors.muted, fontSize: 13)),
                 ),
                 const Expanded(child: Divider()),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 22),
             TextField(
               controller: _conn,
               maxLines: 3,
               autocorrect: false,
               decoration: const InputDecoration(
                 labelText: 'Connection string',
-                border: OutlineInputBorder(),
                 hintText: 'https://host/?token=...',
               ),
             ),
@@ -140,24 +132,18 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
               onSubmitted: (_) => _submit(),
               decoration: const InputDecoration(
                 labelText: 'Name (optional)',
-                border: OutlineInputBorder(),
                 hintText: 'e.g. my laptop',
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
+                child: Text(_error!,
+                    style: const TextStyle(color: AppColors.offline)),
               ),
             FilledButton(
               onPressed: _busy ? null : _submit,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
               child: _busy
                   ? const SizedBox(
                       height: 20,

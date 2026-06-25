@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../api.dart';
 import '../models.dart';
+import '../theme.dart';
 import 'folder_browser.dart';
 import 'session.dart';
 
@@ -60,13 +62,15 @@ class _SessionsScreenState extends State<SessionsScreen> {
           IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _newSession,
-        icon: const Icon(Icons.create_new_folder_outlined),
-        label: const Text('Open folder'),
+      floatingActionButton: GradientButton(
+        icon: Icons.create_new_folder_outlined,
+        label: 'Open folder',
+        onTap: _newSession,
       ),
       body: RefreshIndicator(
         onRefresh: () async => _refresh(),
+        color: AppColors.accent,
+        backgroundColor: AppColors.surface,
         child: FutureBuilder<List<SessionInfo>>(
           future: _future,
           builder: (context, snap) {
@@ -78,59 +82,69 @@ class _SessionsScreenState extends State<SessionsScreen> {
             }
             final sessions = snap.data ?? const [];
             if (sessions.isEmpty) {
-              return ListView(
-                children: [
-                  const SizedBox(height: 140),
-                  Center(
-                    child: Column(
-                      children: [
-                        Icon(Icons.folder_open_outlined,
-                            size: 48, color: Theme.of(context).hintColor),
-                        const SizedBox(height: 12),
-                        const Text('No sessions yet',
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 4),
-                        Text('Tap “Open folder” to start one.',
-                            style:
-                                TextStyle(color: Theme.of(context).hintColor)),
-                      ],
-                    ),
-                  ),
-                ],
-              );
+              return _empty(context);
             }
             return ListView.builder(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
               itemCount: sessions.length,
               itemBuilder: (context, i) {
                 final s = sessions[i];
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                  child: ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    leading: Icon(
-                      s.running ? Icons.bolt : Icons.folder_outlined,
-                      color: s.running ? Colors.amber : null,
-                    ),
-                    title: Text(
-                      s.title.isEmpty ? '(untitled)' : s.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    subtitle: Text(
-                      s.folder,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: _StatusChip(status: s.status, running: s.running),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: GlassCard(
                     onTap: () => _openSession(s.id, s.title),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: (s.running ? AppColors.running : AppColors.muted)
+                                .withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            s.running ? Icons.bolt : Icons.folder_outlined,
+                            color: s.running ? AppColors.running : AppColors.muted,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                s.title.isEmpty ? '(untitled)' : s.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                s.folder,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: AppColors.muted, fontSize: 12.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Pill(
+                          text: s.status.isEmpty ? '—' : s.status,
+                          color: s.running ? AppColors.running : AppColors.muted,
+                        ),
+                      ],
+                    ),
                   ),
-                );
+                )
+                    .animate()
+                    .fadeIn(duration: 260.ms, delay: (40 * i).ms)
+                    .slideY(begin: 0.08, curve: Curves.easeOut);
               },
             );
           },
@@ -138,27 +152,34 @@ class _SessionsScreenState extends State<SessionsScreen> {
       ),
     );
   }
-}
 
-class _StatusChip extends StatelessWidget {
-  final String status;
-  final bool running;
-  const _StatusChip({required this.status, required this.running});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = running ? Colors.amber : scheme.outline;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        status.isEmpty ? '—' : status,
-        style: TextStyle(fontSize: 11, color: color),
-      ),
+  Widget _empty(BuildContext context) {
+    return ListView(
+      children: [
+        const SizedBox(height: 130),
+        Center(
+          child: Column(
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.folder_open_outlined,
+                    size: 36, color: AppColors.accent),
+              ),
+              const SizedBox(height: 16),
+              const Text('No sessions yet',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              const Text('Tap “Open folder” to start one.',
+                  style: TextStyle(color: AppColors.muted)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -176,10 +197,12 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 40),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
+            const Icon(Icons.cloud_off_outlined, size: 44, color: AppColors.muted),
+            const SizedBox(height: 14),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.muted)),
+            const SizedBox(height: 16),
             FilledButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ),

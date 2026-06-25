@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/instances.dart';
+import 'theme.dart';
 
 void main() => runApp(const SnippetApp());
 
@@ -12,14 +13,7 @@ class SnippetApp extends StatelessWidget {
     return MaterialApp(
       title: 'snippet',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF7C9CF5),
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: buildAppTheme(),
       home: const InstancesScreen(),
     );
   }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api.dart';
+import '../theme.dart';
 import '../models.dart';
 
 /// Attaches to a session over WebSocket: receives HarnessState frames and renders
@@ -48,9 +49,7 @@ class _SessionScreenState extends State<SessionScreen> {
           if (!mounted) return;
           setState(() => _state = HarnessState.fromJson(j));
           WidgetsBinding.instance.addPostFrameCallback((_) => _toBottom());
-        } catch (_) {
-          // ignore frames that aren't HarnessState JSON
-        }
+        } catch (_) {}
       },
       onError: (e) {
         if (mounted) setState(() => _connError = '$e');
@@ -71,7 +70,8 @@ class _SessionScreenState extends State<SessionScreen> {
     }
   }
 
-  void _send(Map<String, dynamic> input) => _channel?.sink.add(jsonEncode(input));
+  void _send(Map<String, dynamic> input) =>
+      _channel?.sink.add(jsonEncode(input));
 
   void _sendMessage() {
     final t = _input.text.trim();
@@ -106,21 +106,32 @@ class _SessionScreenState extends State<SessionScreen> {
     final events = state?.events ?? const [];
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.title.isEmpty ? 'session' : widget.title,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(widget.title.isEmpty ? 'session' : widget.title,
+            overflow: TextOverflow.ellipsis),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(20),
+          preferredSize: const Size.fromHeight(22),
           child: Container(
             alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.only(left: 16, bottom: 4),
-            child: Text(
-              status +
-                  (state != null && state.totalTokens > 0
-                      ? '  ·  ${state.totalTokens} tok'
-                      : ''),
-              style: Theme.of(context).textTheme.bodySmall,
+            padding: const EdgeInsets.only(left: 16, bottom: 6),
+            child: Row(
+              children: [
+                GlowDot(
+                  color: running
+                      ? AppColors.running
+                      : (status == 'connecting' || _connError != null
+                          ? AppColors.muted
+                          : AppColors.online),
+                  size: 8,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  status +
+                      (state != null && state.totalTokens > 0
+                          ? '  ·  ${state.totalTokens} tok'
+                          : ''),
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              ],
             ),
           ),
         ),
@@ -136,21 +147,29 @@ class _SessionScreenState extends State<SessionScreen> {
       body: Column(
         children: [
           if (_connError != null)
-            MaterialBanner(
-              content: Text(_connError!),
-              actions: [
-                TextButton(
-                  onPressed: () => setState(_connect),
-                  child: const Text('Reconnect'),
+            Material(
+              color: AppColors.offline.withValues(alpha: 0.12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(_connError!,
+                          style: const TextStyle(color: AppColors.offline)),
+                    ),
+                    TextButton(
+                        onPressed: () => setState(_connect),
+                        child: const Text('Reconnect')),
+                  ],
                 ),
-              ],
+              ),
             ),
           Expanded(
             child: state == null
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
                     controller: _scroll,
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
                     itemCount: events.length,
                     itemBuilder: (_, i) => _EventTile(events[i]),
                   ),
@@ -165,8 +184,11 @@ class _SessionScreenState extends State<SessionScreen> {
   Widget _inputBar(bool running) {
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 8, 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 8, 10, 10),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
         child: Row(
           children: [
             Expanded(
@@ -178,12 +200,26 @@ class _SessionScreenState extends State<SessionScreen> {
                 onSubmitted: (_) => _sendMessage(),
                 decoration: InputDecoration(
                   hintText: running ? 'Queue a message…' : 'Message…',
-                  border: const OutlineInputBorder(),
                   isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 ),
               ),
             ),
-            IconButton(onPressed: _sendMessage, icon: const Icon(Icons.send)),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _sendMessage,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: AppColors.accentGradient,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.arrow_upward,
+                    color: Color(0xFF0A0D13), size: 22),
+              ),
+            ),
           ],
         ),
       ),
@@ -198,21 +234,26 @@ class _ApprovalBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      color: AppColors.surfaceAlt,
       child: Row(
         children: [
-          const Expanded(child: Text('Approve this action?')),
-          TextButton(
-            onPressed: () => onSend({'kind': 'deny'}),
-            child: const Text('Deny'),
+          const Expanded(
+            child: Text('Approve this action?',
+                style: TextStyle(fontWeight: FontWeight.w600)),
           ),
           TextButton(
-            onPressed: () => onSend({'kind': 'approve_all'}),
-            child: const Text('All'),
-          ),
+              onPressed: () => onSend({'kind': 'deny'}),
+              child: const Text('Deny',
+                  style: TextStyle(color: AppColors.offline))),
+          TextButton(
+              onPressed: () => onSend({'kind': 'approve_all'}),
+              child: const Text('All')),
+          const SizedBox(width: 4),
           FilledButton(
             onPressed: () => onSend({'kind': 'approve'}),
+            style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
             child: const Text('Approve'),
           ),
         ],
@@ -229,38 +270,41 @@ class _EventTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final kind = e['kind'] as String? ?? '';
-    final scheme = Theme.of(context).colorScheme;
     switch (kind) {
       case 'user_input':
       case 'steer':
         return _bubble(context, _str(e['text']),
-            align: Alignment.centerRight, color: scheme.primaryContainer);
+            mine: true);
       case 'assistant_text':
-        return _bubble(context, _str(e['text']),
-            align: Alignment.centerLeft, color: scheme.surfaceContainerHighest);
+        return _bubble(context, _str(e['text']), mine: false);
       case 'note':
-        return _line(context, '📝 ${_str(e['entry'])}', dim: true);
+        return _line('📝 ${_str(e['entry'])}', AppColors.muted);
       case 'tool_call':
-        return _line(context, '🔧 ${_str(e['tool_name'])}  ${_short(e['arguments'])}');
+        return _line('🔧 ${_str(e['tool_name'])}  ${_short(e['arguments'])}',
+            AppColors.accent);
       case 'tool_result':
-        return _line(context, '↳ ${_str(e['tool_name'])} · ${_resultStatus(e['result'])}',
-            dim: true);
+        return _line('↳ ${_str(e['tool_name'])} · ${_resultStatus(e['result'])}',
+            AppColors.muted);
       case 'system_decision':
-        return _line(context, '• ${_str(e['step'])}: ${_str(e['reasoning'])}', dim: true);
+        return _line('• ${_str(e['step'])}: ${_str(e['reasoning'])}',
+            AppColors.muted);
       case 'model_error':
-        return _line(context, '⚠ ${_str(e['message'])}', color: scheme.error);
+        return _line('⚠ ${_str(e['message'])}', AppColors.offline);
       case 'invalid_tool_call':
-        return _line(context, '⚠ invalid ${_str(e['tool_name'])}: ${_str(e['error'])}',
-            color: scheme.error);
+        return _line('⚠ invalid ${_str(e['tool_name'])}: ${_str(e['error'])}',
+            AppColors.offline);
       case 'lane_spawned':
-        return _line(context, '⑃ lane: ${_str(e['title'])}', dim: true);
+        return _line('⑃ lane: ${_str(e['title'])}', AppColors.muted);
       case 'lane_completed':
-        return _line(context, '⑃ lane done: ${_str(e['title'])} (${_str(e['status'])})',
-            dim: true);
+        return _line(
+            '⑃ lane done: ${_str(e['title'])} (${_str(e['status'])})',
+            AppColors.muted);
       case 'approval_request':
-        return _line(context, '⏸ approval: ${_str(e['tool_name'])} — ${_str(e['summary'])}');
+        return _line(
+            '⏸ approval: ${_str(e['tool_name'])} — ${_str(e['summary'])}',
+            AppColors.running);
       case 'user_question':
-        return _line(context, '❓ ${_short(e['questions'])}');
+        return _line('❓ ${_short(e['questions'])}', AppColors.running);
       default:
         return const SizedBox.shrink();
     }
@@ -277,32 +321,42 @@ class _EventTile extends StatelessWidget {
   String _resultStatus(dynamic r) =>
       (r is Map && r['status'] != null) ? r['status'].toString() : 'done';
 
-  Widget _bubble(BuildContext c, String text,
-      {required Alignment align, required Color color}) {
+  Widget _bubble(BuildContext c, String text, {required bool mine}) {
     return Align(
-      alignment: align,
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(c).size.width * 0.82),
-        decoration:
-            BoxDecoration(color: color, borderRadius: BorderRadius.circular(14)),
-        child: SelectableText(text),
+        decoration: BoxDecoration(
+          color: mine
+              ? AppColors.accent.withValues(alpha: 0.18)
+              : AppColors.surface,
+          border: Border.all(
+              color: mine
+                  ? AppColors.accent.withValues(alpha: 0.35)
+                  : AppColors.border),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(mine ? 16 : 4),
+            bottomRight: Radius.circular(mine ? 4 : 16),
+          ),
+        ),
+        child: SelectableText(text,
+            style: const TextStyle(color: AppColors.text, fontSize: 14.5, height: 1.35)),
       ),
     );
   }
 
-  Widget _line(BuildContext c, String text, {bool dim = false, Color? color}) {
+  Widget _line(String text, Color color) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Text(
         text,
         style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 12.5,
-          color: color ?? (dim ? Theme.of(c).hintColor : null),
-        ),
+            fontFamily: 'monospace', fontSize: 12.5, color: color),
       ),
     );
   }
