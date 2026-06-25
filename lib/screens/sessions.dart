@@ -5,13 +5,14 @@ import '../models.dart';
 import 'folder_browser.dart';
 import 'session.dart';
 
+/// Sessions for one instance: attach to an existing one, or open a new folder.
 class SessionsScreen extends StatefulWidget {
   final DaemonClient client;
-  final Future<void> Function() onDisconnect;
+  final String instanceName;
   const SessionsScreen({
     super.key,
     required this.client,
-    required this.onDisconnect,
+    required this.instanceName,
   });
 
   @override
@@ -54,20 +55,15 @@ class _SessionsScreenState extends State<SessionsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sessions'),
+        title: Text(widget.instanceName, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
-          IconButton(
-            onPressed: widget.onDisconnect,
-            icon: const Icon(Icons.logout),
-            tooltip: 'Disconnect',
-          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _newSession,
-        icon: const Icon(Icons.add),
-        label: const Text('New'),
+        icon: const Icon(Icons.create_new_folder_outlined),
+        label: const Text('Open folder'),
       ),
       body: RefreshIndicator(
         onRefresh: () async => _refresh(),
@@ -83,12 +79,21 @@ class _SessionsScreenState extends State<SessionsScreen> {
             final sessions = snap.data ?? const [];
             if (sessions.isEmpty) {
               return ListView(
-                children: const [
-                  SizedBox(height: 140),
+                children: [
+                  const SizedBox(height: 140),
                   Center(
-                    child: Text(
-                      'No sessions yet.\nTap New to open a folder.',
-                      textAlign: TextAlign.center,
+                    child: Column(
+                      children: [
+                        Icon(Icons.folder_open_outlined,
+                            size: 40, color: Theme.of(context).hintColor),
+                        const SizedBox(height: 12),
+                        const Text('No sessions yet'),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Tap “Open folder” to start one.',
+                          style: TextStyle(color: Theme.of(context).hintColor),
+                        ),
+                      ],
                     ),
                   ),
                 ],

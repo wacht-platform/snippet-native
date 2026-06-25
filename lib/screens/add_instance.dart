@@ -3,25 +3,27 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../models.dart';
 
-/// Paste the connection string printed by `snippet serve` (the JSON under the
-/// QR code: {"url":..., "token":...}). QR camera scanning is a planned follow-up.
-class ConnectScreen extends StatefulWidget {
-  final Future<void> Function(DaemonClient) onConnected;
-  const ConnectScreen({super.key, required this.onConnected});
+/// Add a daemon by pasting the connection string `snippet serve` prints
+/// ({"url":..., "token":...}). Returns the validated [Instance] via pop.
+class AddInstanceScreen extends StatefulWidget {
+  const AddInstanceScreen({super.key});
 
   @override
-  State<ConnectScreen> createState() => _ConnectScreenState();
+  State<AddInstanceScreen> createState() => _AddInstanceScreenState();
 }
 
-class _ConnectScreenState extends State<ConnectScreen> {
-  final _controller = TextEditingController();
+class _AddInstanceScreenState extends State<AddInstanceScreen> {
+  final _conn = TextEditingController();
+  final _name = TextEditingController();
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
-    _controller.dispose();
+    _conn.dispose();
+    _name.dispose();
     super.dispose();
   }
 
@@ -31,7 +33,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
       _error = null;
     });
     try {
-      final raw = _controller.text.trim();
+      final raw = _conn.text.trim();
       if (raw.isEmpty) throw 'Paste the connection string first.';
       final decoded = jsonDecode(raw);
       if (decoded is! Map) throw 'That is not a valid connection string.';
@@ -44,7 +46,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
       if (!await client.health()) {
         throw 'Could not reach the daemon at $url.';
       }
-      await widget.onConnected(client);
+      final name = _name.text.trim().isEmpty ? hostOf(url) : _name.text.trim();
+      if (mounted) {
+        Navigator.pop(context, Instance(name: name, url: url, token: token));
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -55,28 +60,36 @@ class _ConnectScreenState extends State<ConnectScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Connect')),
+      appBar: AppBar(title: const Text('Add instance')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 8),
-            Text('Connect to snippet serve',
-                style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
             const Text(
-              'Run `snippet serve` on your machine and paste the connection '
-              'string it prints (the JSON shown beneath the QR code).',
+              'Run `snippet serve` and paste the connection string it prints. '
+              '(QR scanning is coming soon.)',
             ),
             const SizedBox(height: 20),
             TextField(
-              controller: _controller,
+              controller: _conn,
               maxLines: 4,
               autocorrect: false,
               decoration: const InputDecoration(
+                labelText: 'Connection string',
                 border: OutlineInputBorder(),
                 hintText: '{"url":"https://...","token":"..."}',
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _name,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                labelText: 'Name (optional)',
+                border: OutlineInputBorder(),
+                hintText: 'e.g. my laptop',
               ),
             ),
             const SizedBox(height: 16),

@@ -1,6 +1,33 @@
 // Dart models mirroring the snippet `serve` daemon wire shapes. Fields the daemon
 // omits when empty/None are treated as optional here.
 
+/// A saved daemon connection (one `snippet serve` instance).
+class Instance {
+  final String name;
+  final String url;
+  final String token;
+  const Instance({required this.name, required this.url, required this.token});
+
+  factory Instance.fromJson(Map<String, dynamic> j) => Instance(
+        name: j['name'] as String? ?? '',
+        url: j['url'] as String? ?? '',
+        token: j['token'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {'name': name, 'url': url, 'token': token};
+
+  String get label => name.isEmpty ? hostOf(url) : name;
+}
+
+String hostOf(String url) {
+  try {
+    final h = Uri.parse(url).host;
+    return h.isEmpty ? url : h;
+  } catch (_) {
+    return url;
+  }
+}
+
 class SessionInfo {
   final String id;
   final String folder;
