@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:qr_code_dart_scan/qr_code_dart_scan.dart';
 
 import '../api.dart';
 import '../models.dart';
@@ -125,15 +125,12 @@ class _AddInstanceScreenState extends State<AddInstanceScreen>
     return Stack(
       alignment: Alignment.center,
       children: [
-        MobileScanner(
-          onDetect: (capture) {
-            final raw = capture.barcodes.isNotEmpty
-                ? capture.barcodes.first.rawValue
-                : null;
-            if (raw != null && raw.trim().isNotEmpty) _connect(raw);
+        QRCodeDartScanView(
+          typeScan: TypeScan.live,
+          onCapture: (result) {
+            final raw = result.text;
+            if (raw.trim().isNotEmpty) _connect(raw);
           },
-          errorBuilder: (context, error) =>
-              _CameraOff(permanent: false, detail: error.toString()),
         ),
         IgnorePointer(
           child: Container(
@@ -231,8 +228,7 @@ class _Hint extends StatelessWidget {
 class _CameraOff extends StatelessWidget {
   final bool permanent;
   final VoidCallback? onAllow;
-  final String? detail;
-  const _CameraOff({required this.permanent, this.onAllow, this.detail});
+  const _CameraOff({required this.permanent, this.onAllow});
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -245,19 +241,9 @@ class _CameraOff extends StatelessWidget {
           const Icon(Icons.no_photography_outlined,
               color: AppColors.muted, size: 44),
           const SizedBox(height: 14),
-          Text(
-            detail == null
-                ? 'Camera off — paste the connection string below'
-                : 'Scanner error — paste below instead',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.muted),
-          ),
-          if (detail != null) ...[
-            const SizedBox(height: 8),
-            Text(detail!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.muted, fontSize: 11)),
-          ],
+          const Text('Camera off — paste the connection string below',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.muted)),
           if (onAllow != null) ...[
             const SizedBox(height: 16),
             FilledButton(
