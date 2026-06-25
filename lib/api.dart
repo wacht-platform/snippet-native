@@ -124,6 +124,13 @@ class DaemonClient {
     if (r.statusCode != 200) throw _err('switch model', r);
   }
 
+  Future<void> rewind(String sessionId, String checkpoint) async {
+    final r = await http.post(_uri('/session/rewind'),
+        headers: _json,
+        body: jsonEncode({'session': sessionId, 'checkpoint': checkpoint}));
+    if (r.statusCode != 200) throw _err('rewind', r);
+  }
+
   String _err(String what, http.Response r) =>
       'Failed to $what (HTTP ${r.statusCode})${r.body.isNotEmpty ? ': ${r.body}' : ''}';
 }

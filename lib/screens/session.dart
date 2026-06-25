@@ -138,6 +138,170 @@ class _SessionScreenState extends State<SessionScreen> {
     }
   }
 
+  String _statusLine(HarnessState? s, String status) {
+    if (s == null) return status;
+    final parts = <String>[status];
+    if (s.contextWindow > 0 && s.lastPromptTokens > 0) {
+      final pct =
+          (s.lastPromptTokens / s.contextWindow * 100).clamp(0, 999).round();
+      parts.add('ctx $pct%');
+    }
+    if (s.totalTokens > 0) parts.add('${fmtSi(s.totalTokens)} tok');
+    final rp = s.ratePrimary;
+    if (rp != null) {
+      parts.add(
+          '${rateWindowLabel(rp.windowMinutes)} ${rp.leftPercent.round()}% left');
+    }
+    return parts.join('  ·  ');
+  }
+
+  void _showUsage() {
+    final s = _state;
+    if (s == null) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Usage',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 16),
+              if (s.contextWindow > 0) ...[
+                _UsageBar(
+                  label: 'Context',
+                  detail:
+                      '${fmtSi(s.lastPromptTokens)} / ${fmtSi(s.contextWindow)}',
+                  fraction:
+                      (s.lastPromptTokens / s.contextWindow).clamp(0, 1).toDouble(),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Wrap(
+                spacing: 22,
+                runSpacing: 10,
+                children: [
+                  _stat('↑ in', fmtSi(s.promptTokens)),
+                  _stat('↓ out', fmtSi(s.completionTokens)),
+                  if (s.cacheReadTokens > 0)
+                    _stat('↻ cached', fmtSi(s.cacheReadTokens)),
+                  _stat('total', fmtSi(s.totalTokens)),
+                ],
+              ),
+              if (s.ratePrimary != null || s.rateSecondary != null) ...[
+                const SizedBox(height: 20),
+                const Text('Rate limits',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: AppColors.muted)),
+                const SizedBox(height: 10),
+                for (final w in [s.ratePrimary, s.rateSecondary])
+                  if (w != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _UsageBar(
+                        label: rateWindowLabel(w.windowMinutes),
+                        detail: '${w.leftPercent.round()}% left',
+                        fraction: (w.leftPercent / 100).clamp(0, 1).toDouble(),
+                      ),
+                    ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _stat(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        Text(label,
+            style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+      ],
+    );
+  }
+
+  void _showCheckpoints() {
+    final s = _state;
+    if (s == null) return;
+    final cps = s.checkpoints.reversed.toList();
+    showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 18, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Checkpoints — restore the workspace',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              ),
+            ),
+            if (cps.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('No checkpoints yet.',
+                    style: TextStyle(color: AppColors.muted)),
+              ),
+            ...cps.map((c) => ListTile(
+                  leading: const Icon(Icons.history, color: AppColors.accent),
+                  title: Text(c.label.isEmpty ? c.id : c.label,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(c.createdAt,
+                      style:
+                          const TextStyle(color: AppColors.muted, fontSize: 12)),
+                  onTap: () => Navigator.pop(context, c.id),
+                )),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    ).then((id) async {
+      if (id is! String || !mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: AppColors.surfaceAlt,
+          title: const Text('Restore workspace?'),
+          content: const Text(
+              'This reverts the workspace files to the checkpoint. The conversation continues.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Restore')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      try {
+        await widget.client.rewind(widget.sessionId, id);
+        _toast('Workspace restored');
+      } catch (e) {
+        _toast('$e');
+      }
+    });
+  }
+
   @override
   void dispose() {
     _channel?.sink.close();
@@ -182,12 +346,13 @@ class _SessionScreenState extends State<SessionScreen> {
                   size: 8,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  status +
-                      (state != null && state.totalTokens > 0
-                          ? '  ·  ${state.totalTokens} tok'
-                          : ''),
-                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                Expanded(
+                  child: Text(
+                    _statusLine(state, status),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                  ),
                 ),
               ],
             ),
@@ -214,10 +379,17 @@ class _SessionScreenState extends State<SessionScreen> {
                   final manual = (state?.approvalMode ?? 'auto') == 'manual';
                   _send({'kind': 'set_mode', 'value': manual ? 'auto' : 'manual'});
                   _toast(manual ? 'Approval: auto' : 'Approval: manual');
+                case 'usage':
+                  _showUsage();
+                case 'checkpoints':
+                  _showCheckpoints();
               }
             },
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'model', child: Text('Switch model')),
+              const PopupMenuItem(value: 'usage', child: Text('Usage')),
+              const PopupMenuItem(
+                  value: 'checkpoints', child: Text('Checkpoints')),
               const PopupMenuItem(
                   value: 'compact', child: Text('Compact history')),
               PopupMenuItem(
@@ -444,6 +616,41 @@ class _EventTile extends StatelessWidget {
         style: TextStyle(
             fontFamily: 'monospace', fontSize: 12.5, color: color),
       ),
+    );
+  }
+}
+
+class _UsageBar extends StatelessWidget {
+  final String label;
+  final String detail;
+  final double fraction;
+  const _UsageBar(
+      {required this.label, required this.detail, required this.fraction});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(detail,
+                style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: fraction,
+            minHeight: 8,
+            backgroundColor: AppColors.surfaceAlt,
+            valueColor: const AlwaysStoppedAnimation(AppColors.accent),
+          ),
+        ),
+      ],
     );
   }
 }

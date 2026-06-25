@@ -105,6 +105,27 @@ class FsListing {
             .toList();
 }
 
+class RateWindow {
+  final double usedPercent;
+  final int windowMinutes;
+  final int resetsAt;
+  RateWindow.fromJson(Map<String, dynamic> j)
+      : usedPercent = (j['used_percent'] as num?)?.toDouble() ?? 0,
+        windowMinutes = (j['window_minutes'] as num?)?.toInt() ?? 0,
+        resetsAt = (j['resets_at'] as num?)?.toInt() ?? 0;
+  double get leftPercent => (100 - usedPercent).clamp(0, 100).toDouble();
+}
+
+class Checkpoint {
+  final String id;
+  final String label;
+  final String createdAt;
+  Checkpoint.fromJson(Map<String, dynamic> j)
+      : id = j['id'] as String? ?? '',
+        label = j['label'] as String? ?? '',
+        createdAt = j['created_at'] as String? ?? '';
+}
+
 class HarnessState {
   final String status;
   final String workspace;
@@ -114,18 +135,83 @@ class HarnessState {
   final String approvalMode;
   final Map<String, dynamic>? pendingQuestion;
   final int totalTokens;
+  final int promptTokens;
+  final int completionTokens;
+  final int cacheReadTokens;
   final int lastPromptTokens;
+  final int contextWindow;
+  final RateWindow? ratePrimary;
+  final RateWindow? rateSecondary;
+  final List<Checkpoint> checkpoints;
 
-  HarnessState.fromJson(Map<String, dynamic> j)
-      : status = j['status'] as String? ?? 'idle',
-        workspace = j['workspace'] as String? ?? '',
-        userRequest = j['user_request'] as String? ?? '',
-        events = ((j['events'] as List?) ?? const [])
-            .map((e) => (e as Map).cast<String, dynamic>())
-            .toList(),
-        finalText = j['final_text'] as String?,
-        approvalMode = j['approval_mode'] as String? ?? 'auto',
-        pendingQuestion = (j['pending_question'] as Map?)?.cast<String, dynamic>(),
-        totalTokens = (j['total_tokens'] as num?)?.toInt() ?? 0,
-        lastPromptTokens = (j['last_prompt_tokens'] as num?)?.toInt() ?? 0;
+  HarnessState({
+    required this.status,
+    required this.workspace,
+    required this.userRequest,
+    required this.events,
+    required this.finalText,
+    required this.approvalMode,
+    required this.pendingQuestion,
+    required this.totalTokens,
+    required this.promptTokens,
+    required this.completionTokens,
+    required this.cacheReadTokens,
+    required this.lastPromptTokens,
+    required this.contextWindow,
+    required this.ratePrimary,
+    required this.rateSecondary,
+    required this.checkpoints,
+  });
+
+  factory HarnessState.fromJson(Map<String, dynamic> j) {
+    final rl = j['rate_limit'] as Map<String, dynamic>?;
+    RateWindow? win(String k) {
+      final m = rl?[k];
+      return m is Map ? RateWindow.fromJson(m.cast<String, dynamic>()) : null;
+    }
+
+    int n(String k) => (j[k] as num?)?.toInt() ?? 0;
+    return HarnessState(
+      status: j['status'] as String? ?? 'idle',
+      workspace: j['workspace'] as String? ?? '',
+      userRequest: j['user_request'] as String? ?? '',
+      events: ((j['events'] as List?) ?? const [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .toList(),
+      finalText: j['final_text'] as String?,
+      approvalMode: j['approval_mode'] as String? ?? 'auto',
+      pendingQuestion: (j['pending_question'] as Map?)?.cast<String, dynamic>(),
+      totalTokens: n('total_tokens'),
+      promptTokens: n('prompt_tokens'),
+      completionTokens: n('completion_tokens'),
+      cacheReadTokens: n('cache_read_tokens'),
+      lastPromptTokens: n('last_prompt_tokens'),
+      contextWindow: n('context_window'),
+      ratePrimary: win('primary'),
+      rateSecondary: win('secondary'),
+      checkpoints: ((j['checkpoints'] as List?) ?? const [])
+          .map((e) => Checkpoint.fromJson((e as Map).cast<String, dynamic>()))
+          .toList(),
+    );
+  }
+}
+
+/// Human label for a rate-limit window length (mirrors the TUI).
+String rateWindowLabel(int minutes) {
+  bool near(int t) => (minutes - t).abs() <= (t * 0.05).round();
+  if (near(300)) return '5h';
+  if (near(1440)) return 'daily';
+  if (near(10080)) return 'wk';
+  if (near(43200)) return 'mo';
+  if (minutes >= 60) return '${minutes ~/ 60}h';
+  return 'limit';
+}
+
+/// Compact SI token formatting (mirrors the TUI's fmt_si: 91M / 425k / 512).
+String fmtSi(int v) {
+  if (v >= 1000000) {
+    return '${(v / 1000000).toStringAsFixed(v >= 10000000 ? 0 : 1)}M';
+  }
+  if (v >= 1000) return '${(v / 1000).toStringAsFixed(v >= 10000 ? 0 : 1)}k';
+  return '$v';
 }
