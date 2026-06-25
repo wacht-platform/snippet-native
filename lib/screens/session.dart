@@ -24,6 +24,8 @@ class _SessionScreenState extends State<SessionScreen> {
   HarnessState? _state;
   String? _connError;
   String? _modelLabel;
+  String? _currentProfile;
+  bool _isCodex = false;
   final _input = TextEditingController();
   final _scroll = ScrollController();
 
@@ -38,10 +40,11 @@ class _SessionScreenState extends State<SessionScreen> {
   Future<void> _loadModel() async {
     try {
       final cfg = await widget.client.getConfig();
+      final wanted = _currentProfile ?? widget.profile;
       ModelProfile? p;
-      if (widget.profile != null) {
+      if (wanted != null) {
         for (final m in cfg.profiles) {
-          if (m.name == widget.profile) {
+          if (m.name == wanted) {
             p = m;
             break;
           }
@@ -55,7 +58,12 @@ class _SessionScreenState extends State<SessionScreen> {
           }
         }
       }
-      if (mounted) setState(() => _modelLabel = p?.name);
+      if (mounted) {
+        setState(() {
+          _modelLabel = p?.name;
+          _isCodex = p?.provider == 'chatgpt';
+        });
+      }
     } catch (_) {}
   }
 
@@ -225,7 +233,7 @@ class _SessionScreenState extends State<SessionScreen> {
       if (s.totalTokens > 0) chips.add(_StatMeta(icon: 'zap', label: '${fmtSi(s.totalTokens)} tok'));
       chips.add(_StatMeta(icon: 'shield', label: s.approvalMode == 'auto' ? 'Auto-approve' : 'Ask', tone: s.approvalMode == 'auto' ? 'accent' : 'default'));
       final rp = s.ratePrimary;
-      if (rp != null) chips.add(_StatMeta(icon: 'clipboard', label: '${rateWindowLabel(rp.windowMinutes)} · ${rp.leftPercent.round()}%', tone: 'run'));
+      if (_isCodex && rp != null) chips.add(_StatMeta(icon: 'clipboard', label: '${rateWindowLabel(rp.windowMinutes)} · ${rp.leftPercent.round()}%', tone: 'run'));
     }
     return Container(
       height: 38,
@@ -448,7 +456,8 @@ class _SessionScreenState extends State<SessionScreen> {
       await widget.client.setSessionModel(widget.sessionId, picked);
       _toast('Switched to $picked');
       if (mounted) {
-        setState(() => _modelLabel = picked);
+        _currentProfile = picked;
+        _loadModel();
         _connect();
       }
     } catch (e) {
@@ -534,7 +543,7 @@ class _SessionScreenState extends State<SessionScreen> {
         const SizedBox(width: 8),
         Expanded(child: StatTile(label: 'Total', value: fmtSi(s.totalTokens), accent: true)),
       ]),
-      if (s.ratePrimary != null || s.rateSecondary != null) ...[
+      if (_isCodex && (s.ratePrimary != null || s.rateSecondary != null)) ...[
         const SizedBox(height: 18),
         const SectionLabel('Rate limits · remaining'),
         const SizedBox(height: 8),
