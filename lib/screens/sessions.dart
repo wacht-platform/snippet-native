@@ -85,50 +85,79 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     child: Column(
                       children: [
                         Icon(Icons.folder_open_outlined,
-                            size: 40, color: Theme.of(context).hintColor),
+                            size: 48, color: Theme.of(context).hintColor),
                         const SizedBox(height: 12),
-                        const Text('No sessions yet'),
+                        const Text('No sessions yet',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 4),
-                        Text(
-                          'Tap “Open folder” to start one.',
-                          style: TextStyle(color: Theme.of(context).hintColor),
-                        ),
+                        Text('Tap “Open folder” to start one.',
+                            style:
+                                TextStyle(color: Theme.of(context).hintColor)),
                       ],
                     ),
                   ),
                 ],
               );
             }
-            return ListView.separated(
+            return ListView.builder(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
               itemCount: sessions.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, i) {
                 final s = sessions[i];
-                return ListTile(
-                  leading: Icon(
-                    s.running ? Icons.bolt : Icons.folder_outlined,
-                    color: s.running ? Colors.amber : null,
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  child: ListTile(
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    leading: Icon(
+                      s.running ? Icons.bolt : Icons.folder_outlined,
+                      color: s.running ? Colors.amber : null,
+                    ),
+                    title: Text(
+                      s.title.isEmpty ? '(untitled)' : s.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      s.folder,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: _StatusChip(status: s.status, running: s.running),
+                    onTap: () => _openSession(s.id, s.title),
                   ),
-                  title: Text(
-                    s.title.isEmpty ? '(untitled)' : s.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    s.folder,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: Text(
-                    s.status,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  onTap: () => _openSession(s.id, s.title),
                 );
               },
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final String status;
+  final bool running;
+  const _StatusChip({required this.status, required this.running});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = running ? Colors.amber : scheme.outline;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        status.isEmpty ? '—' : status,
+        style: TextStyle(fontSize: 11, color: color),
       ),
     );
   }

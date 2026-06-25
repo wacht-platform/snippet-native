@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../models.dart';
+import 'scan.dart';
 
-/// Add a daemon by pasting the connection string `snippet serve` prints
-/// ({"url":..., "token":...}). Returns the validated [Instance] via pop.
+/// Add a daemon by pasting or scanning the connection string `snippet serve`
+/// prints: the public URL carrying the token (https://host/?token=...). Returns
+/// the validated [Instance] via pop. Raw JSON {url,token} is also accepted.
 class AddInstanceScreen extends StatefulWidget {
   const AddInstanceScreen({super.key});
 
@@ -27,21 +29,49 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
     super.dispose();
   }
 
+  /// Parse a connection string into (baseUrl, token).
+  (String, String)? _parse(String raw) {
+    raw = raw.trim();
+    final uri = Uri.tryParse(raw);
+    if (uri != null &&
+        uri.scheme.startsWith('http') &&
+        (uri.queryParameters['token'] ?? '').isNotEmpty) {
+      final token = uri.queryParameters['token']!;
+      final port = uri.hasPort ? ':${uri.port}' : '';
+      return ('${uri.scheme}://${uri.host}$port', token);
+    }
+    // Fallback: JSON {url, token}.
+    try {
+      final m = jsonDecode(raw);
+      if (m is Map && m['url'] is String && m['token'] is String) {
+        return (m['url'] as String, m['token'] as String);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _scan() async {
+    final raw = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const ScanScreen()),
+    );
+    if (raw != null && raw.isNotEmpty) {
+      _conn.text = raw;
+      await _submit();
+    }
+  }
+
   Future<void> _submit() async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final raw = _conn.text.trim();
-      if (raw.isEmpty) throw 'Paste the connection string first.';
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) throw 'That is not a valid connection string.';
-      final url = (decoded['url'] as String?)?.trim();
-      final token = (decoded['token'] as String?)?.trim();
-      if (url == null || url.isEmpty || token == null || token.isEmpty) {
-        throw 'Connection string is missing "url" or "token".';
+      final parsed = _parse(_conn.text);
+      if (parsed == null) {
+        throw 'That is not a valid connection string.';
       }
+      final (url, token) = parsed;
       final client = DaemonClient(url, token);
       if (!await client.health()) {
         throw 'Could not reach the daemon at $url.';
@@ -66,19 +96,41 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Run `snippet serve` and paste the connection string it prints. '
-              '(QR scanning is coming soon.)',
+            Text(
+              'Run `snippet serve`, then scan its QR or paste the connection '
+              'string it prints.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _scan,
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('Scan QR'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('or paste',
+                      style: TextStyle(color: Theme.of(context).hintColor)),
+                ),
+                const Expanded(child: Divider()),
+              ],
             ),
             const SizedBox(height: 20),
             TextField(
               controller: _conn,
-              maxLines: 4,
+              maxLines: 3,
               autocorrect: false,
               decoration: const InputDecoration(
                 labelText: 'Connection string',
                 border: OutlineInputBorder(),
-                hintText: '{"url":"https://...","token":"..."}',
+                hintText: 'https://host/?token=...',
               ),
             ),
             const SizedBox(height: 14),
@@ -103,6 +155,9 @@ class _AddInstanceScreenState extends State<AddInstanceScreen> {
               ),
             FilledButton(
               onPressed: _busy ? null : _submit,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
               child: _busy
                   ? const SizedBox(
                       height: 20,

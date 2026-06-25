@@ -76,34 +76,50 @@ class _InstancesScreenState extends State<InstancesScreen> {
           ? const Center(child: CircularProgressIndicator())
           : instances.isEmpty
               ? _Empty(onAdd: _add)
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
                   itemCount: instances.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, i) {
                     final inst = instances[i];
                     return Dismissible(
                       key: ValueKey('${inst.url}|${inst.token}'),
                       direction: DismissDirection.endToStart,
                       background: Container(
-                        color: Theme.of(context).colorScheme.errorContainer,
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                         alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
+                        padding: const EdgeInsets.only(right: 22),
                         child: const Icon(Icons.delete_outline),
                       ),
                       onDismissed: (_) => _remove(inst),
-                      child: ListTile(
-                        leading: _StatusDot(
-                          client: DaemonClient(inst.url, inst.token),
+                      child: Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 5),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 6),
+                          leading: _StatusDot(
+                            client: DaemonClient(inst.url, inst.token),
+                          ),
+                          title: Text(
+                            inst.label,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 16),
+                          ),
+                          subtitle: Text(
+                            hostOf(inst.url),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => _open(inst),
                         ),
-                        title: Text(inst.label),
-                        subtitle: Text(
-                          hostOf(inst.url),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _open(inst),
                       ),
                     );
                   },
@@ -124,20 +140,25 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.dns_outlined, size: 48, color: Theme.of(context).hintColor),
+            Icon(Icons.dns_outlined, size: 56, color: Theme.of(context).hintColor),
             const SizedBox(height: 16),
-            const Text('No instances yet', style: TextStyle(fontSize: 18)),
+            const Text('No instances yet',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Text(
               'Run `snippet serve` and add the connection string it prints.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Theme.of(context).hintColor),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: onAdd,
               icon: const Icon(Icons.add),
               label: const Text('Add instance'),
+              style: FilledButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              ),
             ),
           ],
         ),
@@ -171,6 +192,15 @@ class _StatusDotState extends State<_StatusDot> {
     final color = _online == null
         ? Theme.of(context).hintColor
         : (_online! ? Colors.greenAccent : Colors.redAccent);
-    return Icon(Icons.circle, size: 12, color: color);
+    return Container(
+      width: 36,
+      height: 36,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.circle, size: 12, color: color),
+    );
   }
 }
