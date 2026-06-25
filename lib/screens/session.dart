@@ -99,8 +99,10 @@ class _SessionScreenState extends State<SessionScreen> {
   void _sendMessage() {
     final t = _input.text.trim();
     if (t.isEmpty) return;
+    final running = _state?.status == 'running';
     _send({'kind': 'user_message', 'value': t});
     _input.clear();
+    if (running) _toast('Queued — runs after the current turn');
     setState(() {});
   }
 
@@ -297,10 +299,7 @@ class _SessionScreenState extends State<SessionScreen> {
           ),
         ),
         const SizedBox(width: 8),
-        if (running)
-          _SquareBtn(icon: 'stop', bg: AppColors.dangerBg, fg: AppColors.danger, border: AppColors.danger.withValues(alpha: 0.3), onTap: () => _send({'kind': 'interrupt'}))
-        else
-          _SquareBtn(icon: 'send', bg: hasText ? AppColors.accent : AppColors.surface2, fg: hasText ? AppColors.accentFg : AppColors.fg4, onTap: hasText ? _sendMessage : null),
+        _SquareBtn(icon: 'send', bg: hasText ? AppColors.accent : AppColors.surface2, fg: hasText ? AppColors.accentFg : AppColors.fg4, onTap: hasText ? _sendMessage : null),
       ]),
     );
   }
@@ -717,9 +716,8 @@ class _ApprovalBar extends StatelessWidget {
 class _SquareBtn extends StatelessWidget {
   final String icon;
   final Color bg, fg;
-  final Color? border;
   final VoidCallback? onTap;
-  const _SquareBtn({required this.icon, required this.bg, required this.fg, this.border, this.onTap});
+  const _SquareBtn({required this.icon, required this.bg, required this.fg, this.onTap});
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -731,7 +729,7 @@ class _SquareBtn extends StatelessWidget {
         child: Container(
           width: 44,
           height: 44,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: border != null ? Border.all(color: border!) : null),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14)),
           child: Icon(iconFor(icon), size: icon == 'send' ? 18 : 16, color: fg),
         ),
       ),
