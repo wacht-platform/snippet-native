@@ -289,39 +289,48 @@ class Bubble extends StatelessWidget {
   }
 }
 
-/// Mono tool-activity line with an optional result.
+/// Mono tool-activity line with an optional result. Tappable → detail drawer.
 class ToolLine extends StatelessWidget {
   final String tool;
   final String arg;
   final String? out;
   final bool done;
-  const ToolLine({super.key, required this.tool, this.arg = '', this.out, this.done = true});
+  final VoidCallback? onTap;
+  const ToolLine({super.key, required this.tool, this.arg = '', this.out, this.done = true, this.onTap});
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const AppIcon('terminal', size: 13, color: AppColors.fg3),
-          const SizedBox(width: 7),
-          Text(tool, style: mono(12, color: AppColors.accent)),
-          const SizedBox(width: 7),
-          Expanded(child: Text(arg, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(12, color: AppColors.fg2))),
-        ]),
-        if (out != null)
-          Padding(
-            padding: const EdgeInsets.only(left: 20, top: 3),
-            child: Row(children: [
-              Text('↳ ', style: mono(11.5, color: done ? AppColors.ok : AppColors.fg4)),
-              Expanded(child: Text(out!, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3))),
-            ]),
-          ),
+    final inner = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const AppIcon('terminal', size: 13, color: AppColors.fg3),
+        const SizedBox(width: 7),
+        Text(tool, style: mono(12, color: AppColors.accent)),
+        const SizedBox(width: 7),
+        Expanded(child: Text(arg, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(12, color: AppColors.fg2))),
+        if (onTap != null) const Padding(padding: EdgeInsets.only(left: 4), child: AppIcon('chevron-right', size: 14, color: AppColors.fg4)),
       ]),
+      if (out != null)
+        Padding(
+          padding: const EdgeInsets.only(left: 20, top: 3),
+          child: Row(children: [
+            Text('↳ ', style: mono(11.5, color: done ? AppColors.ok : AppColors.fg4)),
+            Expanded(child: Text(out!, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3))),
+          ]),
+        ),
+    ]);
+    if (onTap == null) return Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: inner);
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(R.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(R.sm),
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4), child: inner),
+      ),
     );
   }
 }
 
-/// Centered dim/error one-liner.
+/// Dim note (centered) / error (left-aligned, capped at two lines).
 class NoteLine extends StatelessWidget {
   final String text;
   final bool error;
@@ -330,11 +339,24 @@ class NoteLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = error ? AppColors.danger : AppColors.fg3;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
-      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        if (error) ...[const AppIcon('alert-triangle', size: 12, color: AppColors.danger), const SizedBox(width: 7)],
-        Flexible(child: Text(text, textAlign: TextAlign.center, style: mono(11.5, color: c))),
-      ]),
+      padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
+      child: Row(
+        mainAxisAlignment: error ? MainAxisAlignment.start : MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (error) ...[
+            const Padding(padding: EdgeInsets.only(top: 1), child: AppIcon('alert-triangle', size: 12, color: AppColors.danger)),
+            const SizedBox(width: 7),
+          ],
+          Flexible(
+            child: Text(text,
+                textAlign: error ? TextAlign.left : TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: mono(11.5, height: 1.35, color: c)),
+          ),
+        ],
+      ),
     );
   }
 }

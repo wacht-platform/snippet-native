@@ -168,7 +168,6 @@ class _SessionScreenState extends State<SessionScreen> {
         item('model', 'cpu', 'Switch model'),
         item('compact', 'minimize', 'Compact history'),
         item('mode', 'shield', 'Approval mode', value: approval),
-        const PopupMenuDivider(height: 8),
         item('usage', 'activity', 'Usage'),
         item('checkpoints', 'history', 'Checkpoints'),
       ],
@@ -267,8 +266,9 @@ class _SessionScreenState extends State<SessionScreen> {
     final out = <Widget>[];
     Map<String, dynamic>? pending;
     void flush() {
-      if (pending != null) {
-        out.add(ToolLine(tool: _s(pending!['tool_name']), arg: _short(pending!['arguments'])));
+      final p = pending;
+      if (p != null) {
+        out.add(ToolLine(tool: _s(p['tool_name']), arg: _short(p['arguments']), onTap: () => _showToolDetail(_s(p['tool_name']), p['arguments'], null)));
         pending = null;
       }
     }
@@ -280,11 +280,14 @@ class _SessionScreenState extends State<SessionScreen> {
           flush();
           pending = e;
         case 'tool_result':
-          if (pending != null) {
-            out.add(ToolLine(tool: _s(pending!['tool_name']), arg: _short(pending!['arguments']), out: _resultStatus(e['result'])));
-            pending = null;
-          } else {
-            out.add(ToolLine(tool: _s(e['tool_name']), out: _resultStatus(e['result'])));
+          {
+            final p = pending;
+            if (p != null) {
+              out.add(ToolLine(tool: _s(p['tool_name']), arg: _short(p['arguments']), out: _resultStatus(e['result']), onTap: () => _showToolDetail(_s(p['tool_name']), p['arguments'], e['result'])));
+              pending = null;
+            } else {
+              out.add(ToolLine(tool: _s(e['tool_name']), out: _resultStatus(e['result']), onTap: () => _showToolDetail(_s(e['tool_name']), null, e['result'])));
+            }
           }
         case 'user_input':
         case 'steer':
@@ -334,6 +337,41 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   String _resultStatus(dynamic r) => (r is Map && r['status'] != null) ? r['status'].toString() : 'done';
+
+  void _showToolDetail(String name, dynamic args, dynamic result) {
+    showAppSheet(context, title: name, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (args != null) ...[
+        const SectionLabel('Arguments'),
+        const SizedBox(height: 8),
+        _detailBlock(_pretty(args)),
+        const SizedBox(height: 16),
+      ],
+      if (result != null) ...[
+        const SectionLabel('Result'),
+        const SizedBox(height: 8),
+        _detailBlock(_pretty(result is Map && result['data'] != null ? result['data'] : result)),
+      ],
+      if (args == null && result == null) Text('No details.', style: sans(12.5, color: AppColors.fg3)),
+    ]));
+  }
+
+  Widget _detailBlock(String text) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: AppColors.surface2, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(R.md)),
+        child: SelectableText(text, style: mono(11.5, height: 1.5, color: AppColors.fg1)),
+      );
+
+  String _pretty(dynamic v) {
+    if (v is String) return v.length > 6000 ? '${v.substring(0, 6000)}\n…(truncated)' : v;
+    String s;
+    try {
+      s = const JsonEncoder.withIndent('  ').convert(v);
+    } catch (_) {
+      s = v.toString();
+    }
+    return s.length > 6000 ? '${s.substring(0, 6000)}\n…(truncated)' : s;
+  }
 
   Future<void> _switchModel() async {
     ServerConfig cfg;

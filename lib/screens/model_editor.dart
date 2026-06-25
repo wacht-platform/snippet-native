@@ -14,7 +14,7 @@ const _providers = [
   ('openrouter', 'OpenRouter'),
 ];
 
-bool _needsBaseUrl(String p) => p == 'openai-compatible' || p == 'openrouter';
+bool _needsBaseUrl(String p) => p == 'openai-compatible';
 bool _defaultImages(String p) => p == 'anthropic' || p == 'gemini' || p == 'openai' || p == 'chatgpt';
 
 class ModelEditorScreen extends StatefulWidget {
