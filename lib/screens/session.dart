@@ -13,7 +13,8 @@ class SessionScreen extends StatefulWidget {
   final DaemonClient client;
   final String sessionId;
   final String title;
-  const SessionScreen({super.key, required this.client, required this.sessionId, required this.title});
+  final String? profile;
+  const SessionScreen({super.key, required this.client, required this.sessionId, required this.title, this.profile});
   @override
   State<SessionScreen> createState() => _SessionScreenState();
 }
@@ -22,6 +23,7 @@ class _SessionScreenState extends State<SessionScreen> {
   WebSocketChannel? _channel;
   HarnessState? _state;
   String? _connError;
+  String? _modelLabel;
   final _input = TextEditingController();
   final _scroll = ScrollController();
 
@@ -29,7 +31,32 @@ class _SessionScreenState extends State<SessionScreen> {
   void initState() {
     super.initState();
     _connect();
+    _loadModel();
     reportOpenSession('${widget.client.baseUrl}|${widget.sessionId}');
+  }
+
+  Future<void> _loadModel() async {
+    try {
+      final cfg = await widget.client.getConfig();
+      ModelProfile? p;
+      if (widget.profile != null) {
+        for (final m in cfg.profiles) {
+          if (m.name == widget.profile) {
+            p = m;
+            break;
+          }
+        }
+      }
+      if (p == null) {
+        for (final m in cfg.profiles) {
+          if (m.active) {
+            p = m;
+            break;
+          }
+        }
+      }
+      if (mounted) setState(() => _modelLabel = p?.name);
+    } catch (_) {}
   }
 
   void _connect() {
@@ -159,6 +186,8 @@ class _SessionScreenState extends State<SessionScreen> {
           case 'compact':
             _send({'kind': 'compact'});
             _toast('Compacting history');
+          case 'exec':
+            _showExec();
           case 'mode':
             final manual = (s?.approvalMode ?? 'auto') == 'manual';
             _send({'kind': 'set_mode', 'value': manual ? 'auto' : 'manual'});
@@ -170,8 +199,9 @@ class _SessionScreenState extends State<SessionScreen> {
         }
       },
       itemBuilder: (_) => [
-        item('model', 'cpu', 'Switch model'),
+        item('model', 'cpu', 'Switch model', value: _modelLabel),
         item('compact', 'minimize', 'Compact history'),
+        item('exec', 'terminal', 'Run command'),
         item('mode', 'shield', 'Approval mode', value: approval),
         item('usage', 'activity', 'Usage'),
         item('checkpoints', 'history', 'Checkpoints'),
@@ -187,6 +217,7 @@ class _SessionScreenState extends State<SessionScreen> {
         Text(running ? 'Running' : 'Idle', style: sans(11, weight: FontWeight.w500, color: running ? AppColors.run : AppColors.fg2)),
       ]),
     ];
+    if (_modelLabel != null) chips.add(_StatMeta(icon: 'cpu', label: _modelLabel!));
     if (s != null) {
       if (s.contextWindow > 0 && s.lastPromptTokens > 0) {
         chips.add(_StatMeta(icon: 'activity', label: '${(s.lastPromptTokens / s.contextWindow * 100).clamp(0, 999).round()}% ctx'));
@@ -416,10 +447,63 @@ class _SessionScreenState extends State<SessionScreen> {
     try {
       await widget.client.setSessionModel(widget.sessionId, picked);
       _toast('Switched to $picked');
-      if (mounted) setState(_connect);
+      if (mounted) {
+        setState(() => _modelLabel = picked);
+        _connect();
+      }
     } catch (e) {
       _toast('$e');
     }
+  }
+
+  void _showExec() {
+    final ctrl = TextEditingController();
+    String output = '';
+    bool busy = false;
+    showAppSheet(context, title: 'Run command', child: StatefulBuilder(
+      builder: (ctx, setSheet) {
+        Future<void> run() async {
+          final cmd = ctrl.text.trim();
+          if (cmd.isEmpty || busy) return;
+          setSheet(() {
+            busy = true;
+            output = '';
+          });
+          try {
+            final r = await widget.client.exec(widget.sessionId, cmd);
+            final so = (r['stdout'] ?? '').toString();
+            final se = (r['stderr'] ?? '').toString();
+            output = [
+              if (so.isNotEmpty) so,
+              if (se.isNotEmpty) se,
+              'exit ${r['exit_code']}',
+            ].join('\n');
+          } catch (e) {
+            output = '$e';
+          }
+          setSheet(() => busy = false);
+        }
+
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Runs in the session workspace.', style: sans(11.5, color: AppColors.fg3)),
+          const SizedBox(height: 10),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: AppField(controller: ctrl, mono: true, icon: 'terminal', hint: 'ls -la', onSubmitted: (_) => run())),
+            const SizedBox(width: 8),
+            Btn(busy ? '\u2026' : 'Run', disabled: busy, onTap: run),
+          ]),
+          if (output.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: AppColors.surface2, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(R.md)),
+              child: SelectableText(output, style: mono(11.5, height: 1.5, color: AppColors.fg1)),
+            ),
+          ],
+        ]);
+      },
+    ));
   }
 
   void _showUsage() {

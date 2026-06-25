@@ -70,6 +70,7 @@ class SessionInfo {
   final String status;
   final int lastActive;
   final bool running;
+  final String? profile;
 
   SessionInfo.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String? ?? '',
@@ -78,7 +79,8 @@ class SessionInfo {
         title = j['title'] as String? ?? '',
         status = j['status'] as String? ?? '',
         lastActive = (j['last_active'] as num?)?.toInt() ?? 0,
-        running = j['running'] == true;
+        running = j['running'] == true,
+        profile = j['profile'] as String?;
 }
 
 class FsEntry {

@@ -131,6 +131,14 @@ class DaemonClient {
     if (r.statusCode != 200) throw _err('rewind', r);
   }
 
+  Future<Map<String, dynamic>> exec(String sessionId, String command) async {
+    final r = await http.post(_uri('/session/exec'),
+        headers: _json,
+        body: jsonEncode({'session': sessionId, 'command': command}));
+    if (r.statusCode != 200) throw _err('run command', r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   String _err(String what, http.Response r) =>
       'Failed to $what (HTTP ${r.statusCode})${r.body.isNotEmpty ? ': ${r.body}' : ''}';
 }

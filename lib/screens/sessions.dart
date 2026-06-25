@@ -27,11 +27,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
   void _refresh() => setState(() => _future = widget.client.sessions());
 
-  Future<void> _open(String id, String title) async {
+  Future<void> _open(String id, String title, [String? profile]) async {
     await Navigator.push(
         context,
         MaterialPageRoute(
-            builder: (_) => SessionScreen(client: widget.client, sessionId: id, title: title)));
+            builder: (_) => SessionScreen(client: widget.client, sessionId: id, title: title, profile: profile)));
     _refresh();
   }
 
@@ -39,6 +39,48 @@ class _SessionsScreenState extends State<SessionsScreen> {
     final id = await Navigator.push<String>(
         context, MaterialPageRoute(builder: (_) => FolderBrowser(client: widget.client)));
     if (id != null && mounted) await _open(id, 'New session');
+  }
+
+  String _pillStatus(String s) => switch (s) {
+        'running' => 'running',
+        'waiting_for_input' => 'running',
+        'failed' => 'error',
+        _ => 'idle',
+      };
+
+  Widget _sessionCard(SessionInfo s) {
+    return AppCard(
+      onTap: () => _open(s.id, s.title, s.profile),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: Text(s.title.isEmpty ? '(untitled)' : s.title, style: sans(14, weight: FontWeight.w500, height: 1.35, color: AppColors.fg1))),
+        const SizedBox(width: 10),
+        StatusPill(status: _pillStatus(s.status)),
+      ]),
+    );
+  }
+
+  // Group conversations by their workspace folder, with a folder header each.
+  List<Widget> _grouped(List<SessionInfo> sessions) {
+    final groups = <String, List<SessionInfo>>{};
+    for (final s in sessions) {
+      (groups[s.folder] ??= []).add(s);
+    }
+    final out = <Widget>[];
+    groups.forEach((folder, items) {
+      out.add(Padding(
+        padding: const EdgeInsets.fromLTRB(2, 2, 2, 8),
+        child: Row(children: [
+          const AppIcon('folder', size: 13, color: AppColors.fg4),
+          const SizedBox(width: 7),
+          Expanded(child: Text(folder, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3))),
+        ]),
+      ));
+      for (final s in items) {
+        out.add(Padding(padding: const EdgeInsets.only(bottom: 10), child: _sessionCard(s)));
+      }
+      out.add(const SizedBox(height: 6));
+    });
+    return out;
   }
 
   @override
@@ -81,25 +123,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                           padding: EdgeInsets.only(top: 8),
                           child: EmptyState(icon: 'terminal', title: 'No sessions yet', body: 'Open a folder to start a coding session on this machine.'),
                         ),
-                      ...sessions.map((s) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: AppCard(
-                              onTap: () => _open(s.id, s.title),
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Expanded(child: Text(s.title.isEmpty ? '(untitled)' : s.title, style: sans(14, weight: FontWeight.w500, height: 1.3, color: AppColors.fg1))),
-                                  const SizedBox(width: 10),
-                                  StatusPill(status: s.running ? 'running' : 'idle'),
-                                ]),
-                                const SizedBox(height: 10),
-                                Row(children: [
-                                  const AppIcon('folder', size: 14, color: AppColors.fg4),
-                                  const SizedBox(width: 7),
-                                  Expanded(child: Text(s.folder, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3))),
-                                ]),
-                              ]),
-                            ),
-                          )),
+                      ..._grouped(sessions),
                     ],
                   ),
                 );
