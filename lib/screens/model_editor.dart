@@ -3,31 +3,24 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../widgets.dart';
 
+// (value sent to the daemon, label shown in the pill)
 const _providers = [
-  'openai-compatible',
-  'openai',
-  'anthropic',
-  'gemini',
-  'openrouter',
+  ('anthropic', 'Anthropic'),
+  ('openai', 'OpenAI'),
+  ('gemini', 'Google'),
+  ('openai-compatible', 'OpenAI-compatible'),
+  ('openrouter', 'OpenRouter'),
 ];
 
-bool _needsBaseUrl(String provider) =>
-    provider == 'openai-compatible' || provider == 'openrouter';
+bool _needsBaseUrl(String p) => p == 'openai-compatible' || p == 'openrouter';
+bool _defaultImages(String p) => p == 'anthropic' || p == 'gemini' || p == 'openai' || p == 'chatgpt';
 
-bool _defaultImages(String provider) =>
-    provider == 'anthropic' ||
-    provider == 'gemini' ||
-    provider == 'openai' ||
-    provider == 'chatgpt';
-
-/// Add or edit an API-key model profile. ChatGPT-subscription (OAuth) is set up
-/// from the TUI, not here.
 class ModelEditorScreen extends StatefulWidget {
   final DaemonClient client;
   final ModelProfile? existing;
   const ModelEditorScreen({super.key, required this.client, this.existing});
-
   @override
   State<ModelEditorScreen> createState() => _ModelEditorScreenState();
 }
@@ -38,25 +31,25 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
   late final TextEditingController _baseUrl;
   late final TextEditingController _model;
   final _key = TextEditingController();
+  bool _showKey = false;
   late bool _images;
-  bool _setActive = false;
+  bool _active = false;
   bool _busy = false;
   String? _error;
 
   bool get _isEdit => widget.existing != null;
+  bool get _isChatgpt => _provider == 'chatgpt';
 
   @override
   void initState() {
     super.initState();
     final e = widget.existing;
-    // Keep the real provider when editing (e.g. a chatgpt profile set up in the TUI);
-    // new profiles default to an API-key provider.
-    _provider = e?.provider ?? 'openai-compatible';
+    _provider = e?.provider ?? 'anthropic';
     _name = TextEditingController(text: e?.name ?? '');
     _baseUrl = TextEditingController(text: e?.baseUrl ?? '');
     _model = TextEditingController(text: e?.model ?? '');
     _images = _defaultImages(_provider);
-    _setActive = e?.active ?? !_isEdit; // new profiles default to active
+    _active = e?.active ?? !_isEdit;
   }
 
   @override
@@ -76,133 +69,107 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
     try {
       if (_model.text.trim().isEmpty) throw 'Model is required.';
       await widget.client.putProfile(
-        name: _isEdit ? widget.existing!.name : _name.text.trim(),
+        name: _isEdit ? widget.existing!.name : (_name.text.trim().isEmpty ? null : _name.text.trim()),
         provider: _provider,
         baseUrl: _needsBaseUrl(_provider) ? _baseUrl.text.trim() : null,
         model: _model.text.trim(),
         apiKey: _key.text.trim().isEmpty ? null : _key.text.trim(),
         supportsImages: _images,
-        setActive: _setActive,
+        setActive: _active,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _error = '$e';
+          _busy = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // include the current provider as a pill even if it's outside the standard list (e.g. chatgpt)
+    final pills = [..._providers];
+    if (!pills.any((p) => p.$1 == _provider)) pills.insert(0, (_provider, _provider));
     return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? 'Edit model' : 'Add model')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _provider,
-              decoration: const InputDecoration(labelText: 'Provider'),
-              dropdownColor: AppColors.surfaceAlt,
-              items: <String>{..._providers, _provider}
-                  .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                  .toList(),
-              onChanged: _isEdit
-                  ? null
-                  : (v) => setState(() {
-                        _provider = v ?? _provider;
-                        _images = _defaultImages(_provider);
+      body: SafeArea(
+        bottom: false,
+        child: Column(children: [
+          SnAppBar(title: _isEdit ? 'Edit model' : 'Add model', onBack: () => Navigator.pop(context)),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text('Provider', style: sans(12, weight: FontWeight.w500, color: AppColors.fg2)),
+                const SizedBox(height: 7),
+                Wrap(spacing: 7, runSpacing: 7, children: [
+                  for (final (val, label) in pills)
+                    GestureDetector(
+                      onTap: _isEdit ? null : () => setState(() {
+                        _provider = val;
+                        _images = _defaultImages(val);
                       }),
-            ),
-            const SizedBox(height: 14),
-            if (!_isEdit)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: TextField(
-                  controller: _name,
-                  decoration: const InputDecoration(
-                    labelText: 'Name (optional)',
-                    hintText: 'defaults to the provider name',
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _provider == val ? AppColors.accentBg : AppColors.surface2,
+                          borderRadius: BorderRadius.circular(99),
+                          border: Border.all(color: _provider == val ? AppColors.accentLine : AppColors.border),
+                        ),
+                        child: Text(label, style: sans(12.5, weight: FontWeight.w500, color: _provider == val ? AppColors.accent : AppColors.fg2)),
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: 16),
+                if (!_isEdit) ...[
+                  AppField(label: 'Profile name', controller: _name, hint: 'optional — defaults to the provider'),
+                  const SizedBox(height: 16),
+                ],
+                if (_needsBaseUrl(_provider)) ...[
+                  AppField(label: 'Base URL', controller: _baseUrl, mono: true, hint: 'https://api.example.com/v1'),
+                  const SizedBox(height: 16),
+                ],
+                AppField(label: 'Model', controller: _model, mono: true, hint: 'claude-sonnet-4.5'),
+                const SizedBox(height: 16),
+                if (_isChatgpt)
+                  Text('ChatGPT uses the subscription login set up in the TUI — no API key here.', style: sans(12, height: 1.4, color: AppColors.fg3))
+                else
+                  AppField(
+                    label: 'API key',
+                    controller: _key,
+                    mono: true,
+                    obscure: !_showKey,
+                    icon: 'key',
+                    hint: _isEdit && widget.existing!.hasKey ? 'leave blank to keep current key' : 'sk-…',
+                    helper: 'Stored on the machine running snippet. Never sent to snippet servers.',
+                    rightSlot: GestureDetector(
+                      onTap: () => setState(() => _showKey = !_showKey),
+                      child: Padding(padding: const EdgeInsets.all(4), child: Text(_showKey ? 'Hide' : 'Show', style: sans(11, color: AppColors.fg3))),
+                    ),
                   ),
-                ),
-              ),
-            if (_needsBaseUrl(_provider))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: TextField(
-                  controller: _baseUrl,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Base URL',
-                    hintText: 'https://api.example.com/v1',
-                  ),
-                ),
-              ),
-            TextField(
-              controller: _model,
-              autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Model',
-                hintText: 'e.g. gpt-4o, claude-opus-4-8, gemini-3.5-flash',
-              ),
+                const SizedBox(height: 16),
+                AppToggle(on: _images, onChanged: (v) => setState(() => _images = v), label: 'Supports images', sub: 'Send screenshots and diagrams to this model'),
+                const SizedBox(height: 8),
+                AppToggle(on: _active, onChanged: (v) => setState(() => _active = v), label: 'Set as active', sub: 'Use this model for new sessions'),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  Text(_error!, style: sans(12, color: AppColors.danger)),
+                ],
+              ],
             ),
-            const SizedBox(height: 14),
-            if (_provider == 'chatgpt')
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  'ChatGPT uses the subscription login set up in the TUI — no API key here.',
-                  style: TextStyle(color: AppColors.muted, fontSize: 13),
-                ),
-              )
-            else
-              TextField(
-                controller: _key,
-                obscureText: true,
-                autocorrect: false,
-                decoration: InputDecoration(
-                  labelText: 'API key',
-                  hintText: _isEdit && widget.existing!.hasKey
-                      ? 'leave blank to keep current key'
-                      : 'paste your API key',
-                ),
-              ),
-            const SizedBox(height: 6),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Supports images'),
-              subtitle: const Text('multimodal models only',
-                  style: TextStyle(color: AppColors.muted, fontSize: 12.5)),
-              value: _images,
-              onChanged: (v) => setState(() => _images = v),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Set as active'),
-              subtitle: const Text('default model for new sessions',
-                  style: TextStyle(color: AppColors.muted, fontSize: 12.5)),
-              value: _setActive,
-              onChanged: (v) => setState(() => _setActive = v),
-            ),
-            const SizedBox(height: 12),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(_error!,
-                    style: const TextStyle(color: AppColors.offline)),
-              ),
-            FilledButton(
-              onPressed: _busy ? null : _save,
-              child: _busy
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text(_isEdit ? 'Save' : 'Add model'),
-            ),
-          ],
-        ),
+          ),
+          Container(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom),
+            decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
+            child: Row(children: [
+              Btn('Cancel', variant: BtnVariant.ghost, onTap: () => Navigator.pop(context)),
+              const SizedBox(width: 8),
+              Expanded(child: Btn(_busy ? 'Saving…' : 'Save', full: true, disabled: _busy || _model.text.trim().isEmpty, onTap: _save)),
+            ]),
+          ),
+        ]),
       ),
     );
   }

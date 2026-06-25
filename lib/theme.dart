@@ -1,213 +1,176 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// App design tokens + theme. Dark, near-black with an indigo→violet accent.
+/// snippet — Wacht design system (dark), one electric-blue accent.
+/// Resolved dark-theme tokens from the design handoff.
 class AppColors {
-  static const bg = Color(0xFF0A0D13);
-  static const surface = Color(0xFF141925);
-  static const surfaceAlt = Color(0xFF1B2230);
-  static const border = Color(0xFF242C3A);
-  static const accent = Color(0xFF8B9CF8);
-  static const accent2 = Color(0xFFB98AF6);
-  static const text = Color(0xFFEAECF2);
-  static const muted = Color(0xFF818AA0);
-  static const online = Color(0xFF4ADE80);
-  static const offline = Color(0xFFF87171);
-  static const running = Color(0xFFFBBF24);
+  static const bg = Color(0xFF1C1C1C);
+  static const surface1 = Color(0xFF232323); // cards, sheets, agent bubbles
+  static const surface2 = Color(0xFF2B2B2B); // inputs, chips, status strip
+  static const surface3 = Color(0xFF333333); // pressed / hover raise
 
-  static const accentGradient = LinearGradient(
-    colors: [accent, accent2],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  static const fg1 = Color(0xFFF5F5F5); // primary text
+  static const fg2 = Color(0xFFAEAEAE); // secondary text, icons
+  static const fg3 = Color(0xFF777777); // muted / metadata / paths
+  static const fg4 = Color(0xFF5C5C5C); // faint icons, disabled
+
+  static const border = Color(0x14FFFFFF); // hairline ~8%
+  static const border2 = Color(0x24FFFFFF); // hover/emphasis ~14%
+
+  static const accent = Color(0xFF3B7DF7);
+  static const accentHover = Color(0xFF5790F8);
+  static const accentFg = Color(0xFFF6F9FF);
+  static const accentBg = Color(0x293B7DF7); // 16%
+  static const accentLine = Color(0x663B7DF7); // 40%
+  static const accentRing = Color(0x593B7DF7); // ~35%
+
+  static const ok = Color(0xFF39C57E);
+  static const okBg = Color(0x2939C57E);
+  static const run = Color(0xFFD9A441);
+  static const runBg = Color(0x29D9A441);
+  static const danger = Color(0xFFEB5C4D);
+  static const dangerBg = Color(0x29EB5C4D);
 }
+
+class R {
+  static const card = 16.0;
+  static const md = 12.0; // buttons, inputs, icon buttons
+  static const sm = 8.0; // menu items, list rows
+  static const xs = 6.0; // inner chips
+  static const sheetTop = 22.0;
+}
+
+/// Type helpers — Geist (sans) + Geist Mono, per the handoff recipes.
+TextStyle sans(double size,
+        {FontWeight weight = FontWeight.w400,
+        double? height,
+        double? spacing,
+        Color color = AppColors.fg1}) =>
+    GoogleFonts.geist(
+      fontSize: size,
+      fontWeight: weight,
+      height: height,
+      letterSpacing: spacing,
+      color: color,
+    );
+
+TextStyle mono(double size,
+        {FontWeight weight = FontWeight.w400,
+        double? height,
+        Color color = AppColors.fg1}) =>
+    GoogleFonts.geistMono(
+      fontSize: size,
+      fontWeight: weight,
+      height: height,
+      color: color,
+    );
 
 ThemeData buildAppTheme() {
-  final scheme = ColorScheme.fromSeed(
-    seedColor: AppColors.accent,
+  final base = ThemeData(
+    useMaterial3: true,
     brightness: Brightness.dark,
-  ).copyWith(
-    surface: AppColors.bg,
-    primary: AppColors.accent,
-    error: AppColors.offline,
+    colorScheme: const ColorScheme.dark(
+      surface: AppColors.bg,
+      primary: AppColors.accent,
+      error: AppColors.danger,
+    ),
   );
-  final base = ThemeData(useMaterial3: true, colorScheme: scheme);
   return base.copyWith(
     scaffoldBackgroundColor: AppColors.bg,
-    textTheme: GoogleFonts.interTextTheme(base.textTheme)
-        .apply(bodyColor: AppColors.text, displayColor: AppColors.text),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.bg,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      centerTitle: false,
-      titleTextStyle: TextStyle(
-        color: AppColors.text,
-        fontSize: 20,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
+    canvasColor: AppColors.bg,
     dividerColor: AppColors.border,
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: AppColors.surface,
-      hintStyle: const TextStyle(color: AppColors.muted),
-      labelStyle: const TextStyle(color: AppColors.muted),
-      border: _border(AppColors.border),
-      enabledBorder: _border(AppColors.border),
-      focusedBorder: _border(AppColors.accent, 1.5),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        backgroundColor: AppColors.accent,
-        foregroundColor: const Color(0xFF0A0D13),
-        disabledBackgroundColor: AppColors.surfaceAlt,
-        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        padding: const EdgeInsets.symmetric(vertical: 15),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.text,
-        side: const BorderSide(color: AppColors.border),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        padding: const EdgeInsets.symmetric(vertical: 14),
-      ),
-    ),
+    splashColor: AppColors.surface3.withValues(alpha: 0.4),
+    highlightColor: AppColors.surface3.withValues(alpha: 0.3),
+    textTheme: GoogleFonts.geistTextTheme(base.textTheme)
+        .apply(bodyColor: AppColors.fg1, displayColor: AppColors.fg1),
   );
 }
 
-OutlineInputBorder _border(Color c, [double w = 1]) => OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: c, width: w),
-    );
-
-/// A bordered surface card with an optional tap ripple.
-class GlassCard extends StatelessWidget {
-  final Widget child;
-  final VoidCallback? onTap;
-  final EdgeInsetsGeometry padding;
-  const GlassCard({
-    super.key,
-    required this.child,
-    this.onTap,
-    this.padding = const EdgeInsets.all(16),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(padding: padding, child: child),
-        ),
-      ),
-    );
-  }
-}
-
-/// A small glowing status dot (online/offline/checking/running).
-class GlowDot extends StatelessWidget {
-  final Color color;
-  final double size;
-  const GlowDot({super.key, required this.color, this.size = 10});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 8, spreadRadius: 1),
-        ],
-      ),
-    );
-  }
-}
-
-/// A gradient pill button (primary CTA / FAB).
-class GradientButton extends StatelessWidget {
-  final IconData? icon;
-  final String label;
-  final VoidCallback? onTap;
-  final bool compact;
-  const GradientButton({
-    super.key,
-    this.icon,
-    required this.label,
-    this.onTap,
-    this.compact = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.accent,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: compact ? 18 : 22, vertical: 14),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 20, color: const Color(0xFF0A0D13)),
-                  const SizedBox(width: 8),
-                ],
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Color(0xFF0A0D13),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A rounded status pill.
-class Pill extends StatelessWidget {
-  final String text;
-  final Color color;
-  const Pill({super.key, required this.text, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
-      ),
-    );
+/// Map the handoff's Lucide icon names to Material (outlined where it reads as a
+/// line icon). Keeps a single naming surface across the app.
+IconData iconFor(String name) {
+  switch (name) {
+    case 'chevron-left':
+      return Icons.chevron_left;
+    case 'chevron-right':
+      return Icons.chevron_right;
+    case 'chevron-down':
+      return Icons.expand_more;
+    case 'chevron-up':
+      return Icons.expand_less;
+    case 'arrow-right':
+      return Icons.arrow_forward;
+    case 'plus':
+      return Icons.add;
+    case 'x':
+      return Icons.close;
+    case 'more-vertical':
+      return Icons.more_vert;
+    case 'search':
+      return Icons.search;
+    case 'settings':
+      return Icons.settings_outlined;
+    case 'sliders':
+      return Icons.tune;
+    case 'wifi-off':
+      return Icons.wifi_off_rounded;
+    case 'refresh':
+      return Icons.refresh;
+    case 'alert-triangle':
+      return Icons.warning_amber_rounded;
+    case 'check':
+      return Icons.check;
+    case 'check-check':
+      return Icons.done_all;
+    case 'stop':
+      return Icons.stop_rounded;
+    case 'send':
+      return Icons.arrow_upward_rounded;
+    case 'shield':
+      return Icons.shield_outlined;
+    case 'folder':
+      return Icons.folder_outlined;
+    case 'folder-open':
+      return Icons.folder_open_outlined;
+    case 'file':
+      return Icons.insert_drive_file_outlined;
+    case 'git-branch':
+      return Icons.account_tree_outlined;
+    case 'terminal':
+      return Icons.terminal_rounded;
+    case 'grip':
+      return Icons.drag_handle;
+    case 'edit':
+      return Icons.edit_outlined;
+    case 'trash':
+      return Icons.delete_outline;
+    case 'key':
+      return Icons.vpn_key_outlined;
+    case 'cpu':
+      return Icons.memory_outlined;
+    case 'layers':
+      return Icons.layers_outlined;
+    case 'activity':
+      return Icons.show_chart;
+    case 'image':
+      return Icons.image_outlined;
+    case 'scan':
+      return Icons.qr_code_scanner;
+    case 'camera':
+      return Icons.photo_camera_outlined;
+    case 'camera-off':
+      return Icons.no_photography_outlined;
+    case 'clipboard':
+      return Icons.content_paste;
+    case 'history':
+      return Icons.history;
+    case 'zap':
+      return Icons.bolt_outlined;
+    case 'minimize':
+      return Icons.remove;
+    case 'rotate':
+      return Icons.restore;
+    default:
+      return Icons.circle_outlined;
   }
 }

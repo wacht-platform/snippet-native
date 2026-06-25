@@ -3,14 +3,12 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../widgets.dart';
 import 'model_editor.dart';
 
-/// Manage the daemon's model profiles (shared with the TUI's config.toml).
-/// Tap a profile to make it the default for new sessions; edit/add via the form.
 class ModelsScreen extends StatefulWidget {
   final DaemonClient client;
   const ModelsScreen({super.key, required this.client});
-
   @override
   State<ModelsScreen> createState() => _ModelsScreenState();
 }
@@ -26,147 +24,95 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   void _refresh() => setState(() => _future = widget.client.getConfig());
 
-  Future<void> _edit(ModelProfile? p) async {
-    final saved = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-          builder: (_) => ModelEditorScreen(client: widget.client, existing: p)),
-    );
-    if (saved == true) _refresh();
-  }
-
   Future<void> _run(Future<void> Function() op, String onError) async {
     try {
       await op();
       _refresh();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$onError: $e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$onError: $e')));
     }
+  }
+
+  Future<void> _edit(ModelProfile? p) async {
+    final saved = await Navigator.push<bool>(
+        context, MaterialPageRoute(builder: (_) => ModelEditorScreen(client: widget.client, existing: p)));
+    if (saved == true) _refresh();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Models')),
-      floatingActionButton: GradientButton(
-        icon: Icons.add,
-        label: 'Add model',
-        onTap: () => _edit(null),
-      ),
-      body: FutureBuilder<ServerConfig>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('${snap.error}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: AppColors.muted)),
-              ),
-            );
-          }
-          final profiles = snap.data?.profiles ?? const [];
-          if (profiles.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(28),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+      body: SafeArea(
+        bottom: false,
+        child: Column(children: [
+          SnAppBar(title: 'Models', onBack: () => Navigator.pop(context)),
+          Expanded(
+            child: FutureBuilder<ServerConfig>(
+              future: _future,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)));
+                }
+                final profiles = snap.data?.profiles ?? const [];
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                   children: [
-                    const Text('No models configured',
-                        style:
-                            TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    const Text('Add an API-key provider to get started.',
-                        style: TextStyle(color: AppColors.muted)),
-                  ],
-                ),
-              ),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-            itemCount: profiles.length,
-            itemBuilder: (_, i) {
-              final p = profiles[i];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Dismissible(
-                  key: ValueKey(p.name),
-                  direction: DismissDirection.endToStart,
-                  background: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.offline.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 22),
-                    child: const Icon(Icons.delete_outline,
-                        color: AppColors.offline),
-                  ),
-                  onDismissed: (_) =>
-                      _run(() => widget.client.deleteProfile(p.name), 'delete'),
-                  child: GlassCard(
-                    onTap: () => _run(
-                        () => widget.client.setActiveProfile(p.name), 'activate'),
-                    child: Row(
-                      children: [
-                        Icon(
-                          p.active
-                              ? Icons.check_circle
-                              : Icons.radio_button_unchecked,
-                          color: p.active ? AppColors.accent : AppColors.muted,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(p.name,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600)),
-                                  ),
-                                  if (!p.hasKey) ...[
-                                    const SizedBox(width: 8),
-                                    const Pill(text: 'no key', color: AppColors.running),
-                                  ],
-                                ],
+                    if (profiles.isEmpty) ...[
+                      const EmptyState(icon: 'cpu', title: 'No model configured', body: 'Add a model profile with an API key before starting a session.'),
+                      const SizedBox(height: 10),
+                    ],
+                    ...profiles.map((p) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: AppCard(
+                            onTap: p.hasKey ? () => _run(() => widget.client.setActiveProfile(p.name), 'activate') : null,
+                            child: Row(children: [
+                              _Radio(on: p.active, disabled: !p.hasKey),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Row(children: [
+                                    Flexible(child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(14, weight: FontWeight.w600, color: AppColors.fg1))),
+                                    if (!p.hasKey) ...[const SizedBox(width: 8), const WarnChip()],
+                                    if (p.active) ...[const SizedBox(width: 8), Text('ACTIVE', style: sans(10, weight: FontWeight.w500, spacing: 0.4, color: AppColors.accent))],
+                                  ]),
+                                  const SizedBox(height: 4),
+                                  Text('${p.provider} · ${p.model}', maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3)),
+                                ]),
                               ),
-                              const SizedBox(height: 2),
-                              Text('${p.provider} · ${p.model}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      color: AppColors.muted, fontSize: 12.5)),
-                            ],
+                              IconBtn('edit', size: 34, iconSize: 16, onTap: () => _edit(p)),
+                              IconBtn('trash', size: 34, iconSize: 16, onTap: () => _run(() => widget.client.deleteProfile(p.name), 'delete')),
+                            ]),
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined,
-                              color: AppColors.muted),
-                          onPressed: () => _edit(p),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          );
-        },
+                        )),
+                    AddCard(label: 'Add model', onTap: () => _edit(null)),
+                  ],
+                );
+              },
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _Radio extends StatelessWidget {
+  final bool on, disabled;
+  const _Radio({required this.on, required this.disabled});
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: disabled ? 0.4 : 1,
+      child: Container(
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: on ? AppColors.accent : AppColors.border2, width: 2),
+        ),
+        child: on
+            ? Center(child: Container(width: 10, height: 10, decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle)))
+            : null,
       ),
     );
   }
