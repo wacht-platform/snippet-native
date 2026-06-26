@@ -1,4 +1,4 @@
-package com.snippet.snippet_mobile
+package com.snippet
 
 import io.flutter.embedding.android.FlutterActivity
 
