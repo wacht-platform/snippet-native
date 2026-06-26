@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api.dart';
@@ -32,6 +34,11 @@ class _SessionScreenState extends State<SessionScreen> {
   // Messages sent mid-run, shown optimistically until the daemon applies them as
   // a `steer` event (then reconciled away). Cancelled via the drop_queued input.
   final List<String> _queued = [];
+  // A pending image attachment: local path for the thumbnail + the uploaded
+  // daemon path the agent will read_image. _uploading while the upload is in flight.
+  String? _localImagePath;
+  String? _pendingImagePath;
+  bool _uploading = false;
 
   @override
   void initState() {
@@ -105,14 +112,46 @@ class _SessionScreenState extends State<SessionScreen> {
 
   void _sendMessage() {
     final t = _input.text.trim();
-    if (t.isEmpty) return;
+    final img = _pendingImagePath;
+    if (t.isEmpty && img == null) return;
     final running = _state?.status == 'running';
-    _send({'kind': 'user_message', 'value': t});
+    // Attach the uploaded image as an explicit read_image instruction so the agent
+    // reliably views it this turn.
+    final marker = '[attached image — call read_image on this exact path to view it: $img]';
+    final msg = img == null ? t : (t.isEmpty ? marker : '$t\n\n$marker');
+    _send({'kind': 'user_message', 'value': msg});
     _input.clear();
     // While running, show it on-screen as a queued bubble instead of a toast.
     setState(() {
-      if (running) _queued.add(t);
+      if (running) _queued.add(t.isEmpty ? '🖼 image' : t);
+      _localImagePath = null;
+      _pendingImagePath = null;
+      _uploading = false;
     });
+  }
+
+  Future<void> _attachImage() async {
+    try {
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85, maxWidth: 2200);
+      if (x == null) return;
+      setState(() {
+        _localImagePath = x.path;
+        _pendingImagePath = null;
+        _uploading = true;
+      });
+      final bytes = await x.readAsBytes();
+      final path = await widget.client.uploadFile(bytes, name: x.name);
+      if (!mounted) return;
+      setState(() {
+        _pendingImagePath = path;
+        _uploading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _uploading = false);
+        _toast('$e');
+      }
+    }
   }
 
   // Cancel everything still queued for this run (drop_queued clears the daemon's
@@ -315,34 +354,67 @@ class _SessionScreenState extends State<SessionScreen> {
 
   Widget _inputBar(bool running) {
     final hasText = _input.text.trim().isNotEmpty;
+    final canSend = (hasText || _pendingImagePath != null) && !_uploading;
     return Container(
       padding: EdgeInsets.fromLTRB(12, 10, 12, 12 + MediaQuery.of(context).padding.bottom),
       decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(color: AppColors.surface2, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(18)),
-            padding: const EdgeInsets.fromLTRB(14, 2, 6, 2),
-            child: TextField(
-              controller: _input,
-              minLines: 1,
-              maxLines: 5,
-              cursorColor: AppColors.accent,
-              onChanged: (_) => setState(() {}),
-              onSubmitted: (_) => _sendMessage(),
-              style: sans(13.5, height: 1.45, color: AppColors.fg1),
-              decoration: InputDecoration(
-                isCollapsed: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 11),
-                border: InputBorder.none,
-                hintText: 'Message snippet…',
-                hintStyle: sans(13.5, color: AppColors.fg4),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_localImagePath != null) _imageChip(),
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          _SquareBtn(icon: 'image', bg: AppColors.surface2, fg: _uploading ? AppColors.fg4 : AppColors.fg2, onTap: _uploading ? null : _attachImage),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(color: AppColors.surface2, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(18)),
+              padding: const EdgeInsets.fromLTRB(14, 2, 6, 2),
+              child: TextField(
+                controller: _input,
+                minLines: 1,
+                maxLines: 5,
+                cursorColor: AppColors.accent,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _sendMessage(),
+                style: sans(13.5, height: 1.45, color: AppColors.fg1),
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                  border: InputBorder.none,
+                  hintText: 'Message snippet…',
+                  hintStyle: sans(13.5, color: AppColors.fg4),
+                ),
               ),
             ),
           ),
+          const SizedBox(width: 8),
+          _SquareBtn(icon: 'send', bg: canSend ? AppColors.accent : AppColors.surface2, fg: canSend ? AppColors.accentFg : AppColors.fg4, onTap: canSend ? _sendMessage : null),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _imageChip() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 2, right: 2),
+      child: Row(children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: _localImagePath != null
+              ? Image.file(File(_localImagePath!), width: 40, height: 40, fit: BoxFit.cover)
+              : Container(width: 40, height: 40, color: AppColors.surface3),
         ),
-        const SizedBox(width: 8),
-        _SquareBtn(icon: 'send', bg: hasText ? AppColors.accent : AppColors.surface2, fg: hasText ? AppColors.accentFg : AppColors.fg4, onTap: hasText ? _sendMessage : null),
+        const SizedBox(width: 9),
+        if (_uploading) ...[
+          const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)),
+          const SizedBox(width: 8),
+          Text('Uploading…', style: sans(11.5, color: AppColors.fg3)),
+        ] else
+          Text('Image attached', style: sans(11.5, color: AppColors.fg2)),
+        const Spacer(),
+        IconBtn('x', size: 30, iconSize: 16, onTap: () => setState(() {
+          _localImagePath = null;
+          _pendingImagePath = null;
+          _uploading = false;
+        })),
       ]),
     );
   }
