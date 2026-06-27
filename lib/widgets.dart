@@ -549,6 +549,7 @@ class AppField extends StatefulWidget {
   final int minLines;
   final int maxLines;
   final bool enabled;
+  final TextInputType? keyboardType;
   final ValueChanged<String>? onSubmitted;
   const AppField({
     super.key,
@@ -563,6 +564,7 @@ class AppField extends StatefulWidget {
     this.minLines = 1,
     this.maxLines = 1,
     this.enabled = true,
+    this.keyboardType,
     this.onSubmitted,
   });
   @override
@@ -613,6 +615,7 @@ class _AppFieldState extends State<AppField> {
               obscureText: widget.obscure,
               minLines: widget.minLines,
               maxLines: widget.maxLines,
+              keyboardType: widget.keyboardType,
               onSubmitted: widget.onSubmitted,
               cursorColor: AppColors.accent,
               style: widget.mono ? mono(13, color: AppColors.fg1) : sans(13, color: AppColors.fg1),

@@ -114,6 +114,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           final cur = _state;
           final next = (j['wire'] == 'delta' && cur != null) ? cur.applyDelta(j) : HarnessState.fromJson(j);
           final firstLoad = !_didInitialScroll && next.events.isNotEmpty;
+          // Only auto-follow if the user is already at the bottom — don't yank them
+          // down when they've scrolled up to read history.
+          final follow = _atBottom();
           setState(() {
             _state = next;
             _reconcileQueued(next.events);
@@ -126,7 +129,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
               _toBottom(jump: true);
               Future.delayed(const Duration(milliseconds: 120), () { if (mounted) _toBottom(jump: true); });
               Future.delayed(const Duration(milliseconds: 350), () { if (mounted) _toBottom(jump: true); });
-            } else {
+            } else if (follow) {
               _toBottom();
             }
           });
@@ -151,6 +154,12 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     _reconnectTimer = Timer(Duration(seconds: delay), () {
       if (!_closed) _connect();
     });
+  }
+
+  // True when the view is pinned at (or near) the latest message.
+  bool _atBottom() {
+    if (!_scroll.hasClients) return true;
+    return _scroll.position.pixels >= _scroll.position.maxScrollExtent - 140;
   }
 
   void _toBottom({bool jump = false}) {
@@ -183,6 +192,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       _pendingImagePath = null;
       _uploading = false;
     });
+    // Sending is an explicit action — follow to the bottom to show it.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _toBottom());
   }
 
   Future<void> _attachImage() async {

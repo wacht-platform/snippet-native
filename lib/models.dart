@@ -37,6 +37,7 @@ class ModelProfile {
   final String model;
   final bool hasKey;
   final bool active;
+  final int contextWindow;
 
   ModelProfile.fromJson(Map<String, dynamic> j)
       : name = j['name'] as String? ?? '',
@@ -44,7 +45,8 @@ class ModelProfile {
         baseUrl = j['base_url'] as String? ?? '',
         model = j['model'] as String? ?? '',
         hasKey = j['has_key'] == true,
-        active = j['active'] == true;
+        active = j['active'] == true,
+        contextWindow = (j['context_window'] as num?)?.toInt() ?? 0;
 }
 
 class ServerConfig {

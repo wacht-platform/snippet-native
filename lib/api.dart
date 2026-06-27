@@ -114,6 +114,7 @@ class DaemonClient {
     String? apiKey,
     String? reasoningEffort,
     bool? supportsImages,
+    int? contextWindow,
     bool setActive = false,
   }) async {
     final body = <String, dynamic>{
@@ -128,6 +129,7 @@ class DaemonClient {
       body['reasoning_effort'] = reasoningEffort;
     }
     if (supportsImages != null) body['supports_images'] = supportsImages;
+    if (contextWindow != null && contextWindow > 0) body['context_window'] = contextWindow;
     final r = await http.put(_uri('/config/profile'),
         headers: _json, body: jsonEncode(body));
     if (r.statusCode != 200) throw _err('save profile', r);

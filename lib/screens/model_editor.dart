@@ -30,6 +30,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
   late final TextEditingController _name;
   late final TextEditingController _baseUrl;
   late final TextEditingController _model;
+  late final TextEditingController _ctx;
   final _key = TextEditingController();
   bool _showKey = false;
   late bool _images;
@@ -48,6 +49,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
     _name = TextEditingController(text: e?.name ?? '');
     _baseUrl = TextEditingController(text: e?.baseUrl ?? '');
     _model = TextEditingController(text: e?.model ?? '');
+    _ctx = TextEditingController(text: (e?.contextWindow ?? 0) > 0 ? '${e!.contextWindow}' : '');
     _images = _defaultImages(_provider);
     _active = e?.active ?? !_isEdit;
   }
@@ -57,6 +59,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
     _name.dispose();
     _baseUrl.dispose();
     _model.dispose();
+    _ctx.dispose();
     _key.dispose();
     super.dispose();
   }
@@ -75,6 +78,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
         model: _model.text.trim(),
         apiKey: _key.text.trim().isEmpty ? null : _key.text.trim(),
         supportsImages: _images,
+        contextWindow: int.tryParse(_ctx.text.trim()),
         setActive: _active,
       );
       if (mounted) Navigator.pop(context, true);
@@ -132,6 +136,15 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
                   const SizedBox(height: 16),
                 ],
                 AppField(label: 'Model', controller: _model, mono: true, hint: 'claude-sonnet-4.5'),
+                const SizedBox(height: 16),
+                AppField(
+                  label: 'Context window (tokens)',
+                  controller: _ctx,
+                  mono: true,
+                  keyboardType: TextInputType.number,
+                  hint: 'e.g. 200000 — blank keeps the default',
+                  helper: 'Sets the % context gauge and the point where the agent compacts history.',
+                ),
                 const SizedBox(height: 16),
                 if (_isChatgpt)
                   Text('ChatGPT uses the subscription login set up in the TUI — no API key here.', style: sans(12, height: 1.4, color: AppColors.fg3))
