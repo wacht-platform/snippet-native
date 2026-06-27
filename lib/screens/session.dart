@@ -1052,6 +1052,23 @@ class _QuestionBarState extends State<_QuestionBar> {
         ),
       );
 
+  // Full-width selectable row for single-choice options (labels are sentences).
+  Widget _choiceRow(String label, bool sel, VoidCallback onTap) => Material(
+        color: sel ? AppColors.accent : AppColors.surface2,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            child: Row(children: [
+              Expanded(child: Text(label, style: sans(12.5, height: 1.35, weight: FontWeight.w500, color: sel ? AppColors.accentFg : AppColors.fg1))),
+              if (sel) ...[const SizedBox(width: 8), const AppIcon('check', size: 15, color: AppColors.accentFg)],
+            ]),
+          ),
+        ),
+      );
+
   List<Widget> _inputFor(Map<String, dynamic> q) {
     final id = q['id'].toString();
     final k = _kind(q);
@@ -1066,10 +1083,25 @@ class _QuestionBarState extends State<_QuestionBar> {
       ];
     }
     if (k == 'single_choice') {
-      final choices = ((q['answer_kind']?['choices'] as List?) ?? const []).map((e) => e.toString()).toList();
+      // Each choice is {value, label}; show the label, send the value (matches the
+      // TUI). Falling back keeps it robust if one side is missing.
+      final choices = ((q['answer_kind']?['choices'] as List?) ?? const []).map((e) {
+        if (e is Map) {
+          final label = '${e['label'] ?? ''}'.trim();
+          final value = '${e['value'] ?? ''}'.trim();
+          final v = value.isEmpty ? label : value;
+          return (value: v, label: label.isEmpty ? v : label);
+        }
+        final s = '$e';
+        return (value: s, label: s);
+      }).toList();
       return [
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final c in choices) _chip(c, _choice[id] == c, () => setState(() => _choice[id] = c)),
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final c in choices)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _choiceRow(c.label, _choice[id] == c.value, () => setState(() => _choice[id] = c.value)),
+            ),
         ]),
       ];
     }
