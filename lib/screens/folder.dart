@@ -160,6 +160,7 @@ class _FolderScreenState extends State<FolderScreen> with SingleTickerProviderSt
               labelColor: AppColors.fg1,
               unselectedLabelColor: AppColors.fg3,
               indicatorColor: AppColors.accent,
+              dividerColor: Colors.transparent,
               labelStyle: sans(13, weight: FontWeight.w600),
               tabs: [
                 Tab(text: _sessions.isEmpty ? 'Sessions' : 'Sessions (${_sessions.length})'),
