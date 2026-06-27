@@ -153,6 +153,7 @@ class _FolderScreenState extends State<FolderScreen> with SingleTickerProviderSt
             subtitle: fs?.path,
             onBack: () => Navigator.pop(context),
             actions: [
+              IconBtn('home', tooltip: 'Instances', onTap: () => Navigator.popUntil(context, (r) => r.isFirst)),
               IconBtn('refresh', onTap: _load),
               IconBtn('cpu', tooltip: 'Models', onTap: () => Navigator.push(context, MaterialPageRoute(
                 builder: (_) => ModelsScreen(client: widget.client),

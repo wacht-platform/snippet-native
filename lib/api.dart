@@ -34,8 +34,11 @@ class DaemonClient {
     }
   }
 
-  Future<List<SessionInfo>> sessions({String? folder}) async {
-    final r = await http.get(_uri('/sessions', folder == null ? null : {'folder': folder}));
+  Future<List<SessionInfo>> sessions({String? folder, int? limit}) async {
+    final q = <String, String>{};
+    if (folder != null) q['folder'] = folder;
+    if (limit != null) q['limit'] = '$limit';
+    final r = await http.get(_uri('/sessions', q.isEmpty ? null : q));
     if (r.statusCode != 200) throw _err('list sessions', r);
     final list = jsonDecode(r.body) as List;
     return list

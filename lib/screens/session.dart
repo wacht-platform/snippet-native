@@ -238,7 +238,11 @@ class _SessionScreenState extends State<SessionScreen> {
             title: widget.title.isEmpty ? 'session' : widget.title,
             subtitle: s != null && s.workspace.isNotEmpty ? s.workspace : null,
             onBack: () => Navigator.pop(context),
-            actions: [if (running) IconBtn('stop', tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})), _menu(s)],
+            actions: [
+              IconBtn('home', tooltip: 'Instances', onTap: () => Navigator.popUntil(context, (r) => r.isFirst)),
+              if (running) IconBtn('stop', tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
+              _menu(s),
+            ],
           ),
           _statusStrip(s, running),
           if (_connError != null) _disconnectedBanner(),

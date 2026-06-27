@@ -313,9 +313,11 @@ class Bubble extends StatelessWidget {
             bottomLeft: Radius.circular(mine ? 16 : 5),
           ),
         ),
+        // Agent text: wrap in a SelectionArea so a drag selects across all markdown
+        // blocks at once (per-block `selectable: true` can't span paragraphs/lines).
         child: mine
             ? SelectableText(text, style: sans(13.5, height: 1.5, color: AppColors.fg1))
-            : MarkdownBody(data: text, selectable: true, styleSheet: markdownStyle(context)),
+            : SelectionArea(child: MarkdownBody(data: text, selectable: false, styleSheet: markdownStyle(context))),
       ),
     );
   }

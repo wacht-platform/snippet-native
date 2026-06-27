@@ -7,7 +7,7 @@ import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'add_instance.dart';
-import 'folder.dart';
+import 'recent.dart';
 
 class InstancesScreen extends StatefulWidget {
   const InstancesScreen({super.key});
@@ -62,7 +62,7 @@ class _InstancesScreenState extends State<InstancesScreen> {
     Navigator.push(
         context,
         MaterialPageRoute(
-            builder: (_) => FolderScreen(
+            builder: (_) => RecentSessionsScreen(
                 client: DaemonClient(inst.url, inst.token), instance: inst)));
   }
 

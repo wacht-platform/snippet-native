@@ -187,6 +187,10 @@ IconData iconFor(String name) {
       return Icons.note_add_outlined;
     case 'corner-down-right':
       return Icons.subdirectory_arrow_right;
+    case 'home':
+      return Icons.home_outlined;
+    case 'clock':
+      return Icons.schedule;
     default:
       return Icons.circle_outlined;
   }
