@@ -35,6 +35,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   // Messages sent mid-run, shown optimistically until the daemon applies them as
   // a `steer` event (then reconciled away). Cancelled via the drop_queued input.
   final List<String> _queued = [];
+  // Messages sent to the daemon but not yet echoed back as events — shown
+  // optimistically (faint) so they don't vanish during the round-trip.
+  final List<String> _pending = [];
   // A pending image attachment: local path for the thumbnail + the uploaded
   // daemon path the agent will read_image. _uploading while the upload is in flight.
   String? _localImagePath;
@@ -126,10 +129,22 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           if (_prevStatus == 'running' && next.status != 'running' && _queued.isNotEmpty) {
             for (final m in _queued) {
               _send({'kind': 'user_message', 'value': m});
+              _pending.add(m);
             }
             _queued.clear();
           }
           _prevStatus = next.status;
+          // Drop pending bubbles once the daemon echoes them back as events.
+          if (j['wire'] == 'delta') {
+            for (final e in ((j['new_events'] as List?) ?? const [])) {
+              final m = e as Map;
+              if (m['kind'] == 'user_input' || m['kind'] == 'steer') {
+                _pending.remove(m['text']?.toString());
+              }
+            }
+          } else {
+            _pending.clear(); // full snapshot is authoritative
+          }
           setState(() {
             _state = next;
           });
@@ -201,6 +216,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         _queued.add(msg);
       } else {
         _send({'kind': 'user_message', 'value': msg});
+        _pending.add(msg); // show it until the daemon echoes it back
       }
       _localImagePath = null;
       _pendingImagePath = null;
@@ -308,6 +324,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                       if (items.isEmpty && !running)
                         const EmptyState(icon: 'terminal', title: 'Session ready', body: 'Send a task to get started.'),
                       ...items,
+                      // Optimistic bubbles for messages sent but not yet echoed.
+                      for (final p in _pending)
+                        Opacity(opacity: 0.5, child: Padding(padding: const EdgeInsets.only(bottom: 12), child: Bubble(mine: true, text: _queuedLabel(p)))),
                       if (running) ...[const SizedBox(height: 12), const _TypingDots()],
                       if (_queued.isNotEmpty) ...[
                         const SizedBox(height: 12),
