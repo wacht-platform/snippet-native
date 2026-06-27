@@ -121,9 +121,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           final cur = _state;
           final next = (j['wire'] == 'delta' && cur != null) ? cur.applyDelta(j) : HarnessState.fromJson(j);
           final firstLoad = !_didInitialScroll && next.events.isNotEmpty;
-          // Only auto-follow if the user is already at the bottom — don't yank them
-          // down when they've scrolled up to read history.
-          final follow = _atBottom();
+          // Auto-follow while pinned to the bottom; the user scrolling up turns it
+          // off (and back on when they return) — content growth never does.
+          final follow = _stickToBottom;
           // The moment the run pauses (running → not running), auto-submit anything
           // the user queued while it was busy.
           if (_prevStatus == 'running' && next.status != 'running' && _queued.isNotEmpty) {
@@ -157,7 +157,10 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
               Future.delayed(const Duration(milliseconds: 120), () { if (mounted) _toBottom(jump: true); });
               Future.delayed(const Duration(milliseconds: 350), () { if (mounted) _toBottom(jump: true); });
             } else if (follow) {
-              _toBottom();
+              // Jump (not animate) so it reaches the true bottom even as a streaming
+              // reply keeps growing; a short re-jump catches late markdown layout.
+              _toBottom(jump: true);
+              Future.delayed(const Duration(milliseconds: 100), () { if (mounted && _stickToBottom) _toBottom(jump: true); });
             }
           });
         } catch (_) {}
@@ -183,10 +186,25 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     });
   }
 
+  // Whether to keep pinning to the latest message. Only the USER's own scrolling
+  // flips this (see the NotificationListener) — content growth never does, so a
+  // streaming reply keeps reaching the true bottom instead of falling behind.
+  bool _stickToBottom = true;
+
   // True when the view is pinned at (or near) the latest message.
   bool _atBottom() {
     if (!_scroll.hasClients) return true;
-    return _scroll.position.pixels >= _scroll.position.maxScrollExtent - 140;
+    return _scroll.position.pixels >= _scroll.position.maxScrollExtent - 80;
+  }
+
+  // Update the stick flag from a user-driven scroll (drag or settle).
+  bool _onScroll(ScrollNotification n) {
+    if (n is ScrollUpdateNotification && n.dragDetails != null) {
+      _stickToBottom = _atBottom();
+    } else if (n is ScrollEndNotification) {
+      _stickToBottom = _atBottom();
+    }
+    return false;
   }
 
   void _toBottom({bool jump = false}) {
@@ -223,8 +241,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       _uploading = false;
     });
     _input.clear();
-    // Sending is an explicit action — follow to the bottom to show it.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _toBottom());
+    // Sending is an explicit action — re-pin and jump to the bottom.
+    _stickToBottom = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _toBottom(jump: true));
   }
 
   Future<void> _attachImage() async {
@@ -317,7 +336,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           Expanded(
             child: s == null
                 ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)))
-                : ListView(
+                : NotificationListener<ScrollNotification>(
+                    onNotification: _onScroll,
+                    child: ListView(
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
                     children: [
@@ -336,6 +357,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                       else if (waiting && s.pendingQuestion != null) ...[const SizedBox(height: 12), _QuestionBar(question: s.pendingQuestion!, onSend: _send)],
                     ],
                   ),
+                ),
           ),
           _inputBar(running),
         ]),
