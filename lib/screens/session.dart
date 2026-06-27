@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,7 +23,7 @@ class SessionScreen extends StatefulWidget {
   State<SessionScreen> createState() => _SessionScreenState();
 }
 
-class _SessionScreenState extends State<SessionScreen> {
+class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserver {
   WebSocketChannel? _channel;
   HarnessState? _state;
   String? _connError;
@@ -40,13 +41,27 @@ class _SessionScreenState extends State<SessionScreen> {
   String? _pendingImagePath;
   bool _uploading = false;
   bool _didInitialScroll = false;
+  // Auto-reconnect: backoff timer + attempt counter; _closed stops retries on leave.
+  Timer? _reconnectTimer;
+  int _reconnectAttempt = 0;
+  bool _closed = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _connect();
     _loadModel();
     reportOpenSession('${widget.client.baseUrl}|${widget.sessionId}');
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The OS often drops the socket while backgrounded — reconnect promptly on resume.
+    if (state == AppLifecycleState.resumed && !_closed) {
+      _reconnectAttempt = 0;
+      _connect();
+    }
   }
 
   Future<void> _loadModel() async {
@@ -80,12 +95,19 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   void _connect() {
+    if (_closed) return;
+    _reconnectTimer?.cancel();
     _channel?.sink.close();
-    _connError = null;
+    if (mounted) setState(() => _connError = null);
     final ch = widget.client.attach(widget.sessionId);
     _channel = ch;
     ch.stream.listen(
       (msg) {
+        // Any frame means a healthy socket — reset backoff + clear the banner.
+        if (_reconnectAttempt != 0 || _connError != null) {
+          _reconnectAttempt = 0;
+          if (mounted) setState(() => _connError = null);
+        }
         try {
           final j = jsonDecode(msg as String) as Map<String, dynamic>;
           if (!mounted) return;
@@ -110,9 +132,25 @@ class _SessionScreenState extends State<SessionScreen> {
           });
         } catch (_) {}
       },
-      onError: (e) => mounted ? setState(() => _connError = '$e') : null,
-      onDone: () => mounted ? setState(() => _connError = 'Lost connection') : null,
+      onError: (_) => _scheduleReconnect(),
+      onDone: _scheduleReconnect,
+      cancelOnError: true,
     );
+  }
+
+  // Reconnect with exponential backoff (1,2,4,8,15,30s). Deduped so onError+onDone
+  // don't double-schedule; reset to 0 on any healthy frame or app-resume.
+  void _scheduleReconnect() {
+    if (_closed) return;
+    if (_reconnectTimer?.isActive ?? false) return; // already pending
+    _channel = null;
+    const steps = [1, 2, 4, 8, 15, 30];
+    final delay = steps[_reconnectAttempt.clamp(0, steps.length - 1)];
+    _reconnectAttempt++;
+    if (mounted) setState(() => _connError = 'Reconnecting…');
+    _reconnectTimer = Timer(Duration(seconds: delay), () {
+      if (!_closed) _connect();
+    });
   }
 
   void _toBottom({bool jump = false}) {
@@ -206,6 +244,9 @@ class _SessionScreenState extends State<SessionScreen> {
 
   @override
   void dispose() {
+    _closed = true;
+    _reconnectTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     reportOpenSession('');
     _channel?.sink.close();
     _input.dispose();
@@ -362,11 +403,14 @@ class _SessionScreenState extends State<SessionScreen> {
         const SizedBox(width: 9),
         Expanded(child: Text(_connError ?? 'Disconnected', style: sans(12, height: 1.3, color: AppColors.fg1))),
         GestureDetector(
-          onTap: () => setState(_connect),
+          onTap: () {
+            _reconnectAttempt = 0;
+            _connect();
+          },
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const AppIcon('refresh', size: 13, color: AppColors.danger),
             const SizedBox(width: 5),
-            Text('Reconnect', style: sans(12, weight: FontWeight.w600, color: AppColors.danger)),
+            Text('Retry now', style: sans(12, weight: FontWeight.w600, color: AppColors.danger)),
           ]),
         ),
       ]),
