@@ -60,6 +60,18 @@ class _RecentSessionsScreenState extends State<RecentSessionsScreen> {
     )).then((_) => _reload());
   }
 
+  Future<void> _rename(SessionInfo s) async {
+    final title = await promptText(context,
+        title: 'Rename session', initial: s.title, hint: 'New title', saveLabel: 'Rename');
+    if (title == null) return;
+    try {
+      await widget.client.renameSession(s.id, title);
+      _reload();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   Future<void> _delete(SessionInfo s) async {
     final ok = await showAppSheet<bool>(context, title: 'Delete session?', child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,6 +169,7 @@ class _RecentSessionsScreenState extends State<RecentSessionsScreen> {
         ),
         const SizedBox(width: 8),
         StatusPill(status: _pill(s.status)),
+        IconBtn('edit', size: 34, iconSize: 15, onTap: () => _rename(s)),
         IconBtn('trash', size: 34, iconSize: 16, onTap: () => _delete(s)),
       ]),
     );

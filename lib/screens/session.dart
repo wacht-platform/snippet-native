@@ -45,10 +45,12 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   Timer? _reconnectTimer;
   int _reconnectAttempt = 0;
   bool _closed = false;
+  late String _title;
 
   @override
   void initState() {
     super.initState();
+    _title = widget.title;
     WidgetsBinding.instance.addObserver(this);
     _connect();
     _loadModel();
@@ -287,7 +289,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         bottom: false,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SnAppBar(
-            title: widget.title.isEmpty ? 'session' : widget.title,
+            title: _title.isEmpty ? 'session' : _title,
             subtitle: s != null && s.workspace.isNotEmpty ? s.workspace : null,
             onBack: () => Navigator.pop(context),
             actions: [
@@ -324,6 +326,18 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     );
   }
 
+  Future<void> _renameCurrent() async {
+    final title = await promptText(context,
+        title: 'Rename session', initial: _title, hint: 'New title', saveLabel: 'Rename');
+    if (title == null) return;
+    try {
+      await widget.client.renameSession(widget.sessionId, title);
+      if (mounted) setState(() => _title = title);
+    } catch (e) {
+      if (mounted) _toast('$e');
+    }
+  }
+
   Widget _menu(HarnessState? s) {
     final approval = (s?.approvalMode ?? 'auto') == 'auto' ? 'Auto' : 'Ask';
     PopupMenuItem<String> item(String v, String icon, String label, {String? value, bool divider = false}) {
@@ -357,6 +371,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             final manual = (s?.approvalMode ?? 'auto') == 'manual';
             _send({'kind': 'set_mode', 'value': manual ? 'auto' : 'manual'});
             _toast(manual ? 'Approval: auto' : 'Approval: ask');
+          case 'rename':
+            _renameCurrent();
           case 'usage':
             _showUsage();
           case 'checkpoints':
@@ -365,6 +381,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       },
       itemBuilder: (_) => [
         item('model', 'cpu', 'Switch model', value: _modelLabel),
+        item('rename', 'edit', 'Rename session'),
         item('compact', 'minimize', 'Compact history'),
         item('exec', 'terminal', 'Run command'),
         item('mode', 'shield', 'Approval mode', value: approval),

@@ -549,6 +549,7 @@ class AppField extends StatefulWidget {
   final int minLines;
   final int maxLines;
   final bool enabled;
+  final bool autofocus;
   final TextInputType? keyboardType;
   final ValueChanged<String>? onSubmitted;
   const AppField({
@@ -564,6 +565,7 @@ class AppField extends StatefulWidget {
     this.minLines = 1,
     this.maxLines = 1,
     this.enabled = true,
+    this.autofocus = false,
     this.keyboardType,
     this.onSubmitted,
   });
@@ -615,6 +617,7 @@ class _AppFieldState extends State<AppField> {
               obscureText: widget.obscure,
               minLines: widget.minLines,
               maxLines: widget.maxLines,
+              autofocus: widget.autofocus,
               keyboardType: widget.keyboardType,
               onSubmitted: widget.onSubmitted,
               cursorColor: AppColors.accent,
@@ -640,6 +643,28 @@ class _AppFieldState extends State<AppField> {
 }
 
 /// Bottom sheet matching the handoff (drag handle, title + close, scroll body).
+/// A bottom-sheet single-field text prompt (rename, etc.). Returns the trimmed
+/// text on save, or null if cancelled.
+Future<String?> promptText(BuildContext context,
+    {required String title, String initial = '', String? hint, String saveLabel = 'Save'}) {
+  final ctrl = TextEditingController(text: initial);
+  return showAppSheet<String>(context, title: title, child: Builder(builder: (ctx) {
+    void done() => Navigator.pop(ctx, ctrl.text.trim());
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        AppField(controller: ctrl, hint: hint, autofocus: true, onSubmitted: (_) => done()),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(child: Btn('Cancel', variant: BtnVariant.secondary, onTap: () => Navigator.pop(ctx))),
+          const SizedBox(width: 10),
+          Expanded(child: Btn(saveLabel, onTap: done)),
+        ]),
+      ]),
+    );
+  }));
+}
+
 Future<T?> showAppSheet<T>(BuildContext context, {required String title, required Widget child}) {
   return showModalBottomSheet<T>(
     context: context,

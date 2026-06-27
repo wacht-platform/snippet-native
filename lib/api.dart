@@ -167,6 +167,12 @@ class DaemonClient {
     if (r.statusCode != 200) throw _err('delete session', r);
   }
 
+  Future<void> renameSession(String sessionId, String title) async {
+    final r = await http.post(_uri('/session/rename'),
+        headers: _json, body: jsonEncode({'session': sessionId, 'title': title}));
+    if (r.statusCode != 200) throw _err('rename session', r);
+  }
+
   Future<Map<String, dynamic>> exec(String sessionId, String command) async {
     final r = await http.post(_uri('/session/exec'),
         headers: _json,
