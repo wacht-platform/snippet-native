@@ -12,6 +12,7 @@ import '../notifications.dart';
 import '../theme.dart';
 import '../tool_views.dart';
 import '../widgets.dart';
+import 'files.dart';
 import 'git.dart';
 
 class SessionScreen extends StatefulWidget {
@@ -409,6 +410,12 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             Navigator.push(context, MaterialPageRoute(
               builder: (_) => GitScreen(client: widget.client, sessionId: widget.sessionId),
             ));
+          case 'files':
+            final ws = s?.workspace ?? '';
+            final name = ws.split('/').where((p) => p.isNotEmpty).lastOrNull ?? 'Files';
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => FileExplorer(client: widget.client, title: name, start: ws.isEmpty ? null : ws),
+            ));
           case 'exec':
             _showExec();
           case 'mode':
@@ -427,6 +434,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         item('model', 'cpu', 'Switch model', value: _modelLabel),
         item('rename', 'edit', 'Rename session'),
         item('git', 'git-branch', 'Git'),
+        item('files', 'folder', 'Open files'),
         item('compact', 'minimize', 'Compact history'),
         item('exec', 'terminal', 'Run command'),
         item('mode', 'shield', 'Approval mode', value: approval),

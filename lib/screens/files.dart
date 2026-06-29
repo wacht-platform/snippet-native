@@ -13,7 +13,8 @@ import 'editor.dart';
 class FileExplorer extends StatefulWidget {
   final DaemonClient client;
   final String title;
-  const FileExplorer({super.key, required this.client, this.title = 'Files'});
+  final String? start; // initial folder (null = the daemon's home dir)
+  const FileExplorer({super.key, required this.client, this.title = 'Files', this.start});
   @override
   State<FileExplorer> createState() => _FileExplorerState();
 }
@@ -24,7 +25,7 @@ class _FileExplorerState extends State<FileExplorer> {
   @override
   void initState() {
     super.initState();
-    _future = widget.client.fs(null);
+    _future = widget.client.fs(widget.start);
   }
 
   void _go(String? path) => setState(() => _future = widget.client.fs(path));
