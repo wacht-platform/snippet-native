@@ -4,6 +4,7 @@ import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'editor.dart';
 
 /// Standalone file browser — navigate folders and view file contents on a
 /// connected machine without opening an agent session.
@@ -152,7 +153,11 @@ class _FileViewerState extends State<FileViewer> {
       body: SafeArea(
         bottom: false,
         child: Column(children: [
-          SnAppBar(title: widget.name, subtitle: widget.path, onBack: () => Navigator.pop(context)),
+          SnAppBar(title: widget.name, subtitle: widget.path, onBack: () => Navigator.pop(context), actions: [
+            IconBtn('edit', tooltip: 'Edit', onTap: () => Navigator.push(context, MaterialPageRoute(
+              builder: (_) => EditorScreen(client: widget.client, path: widget.path, name: widget.name),
+            )).then((_) => setState(() => _future = widget.client.readFile(widget.path)))),
+          ]),
           Expanded(
             child: FutureBuilder<FileContent>(
               future: _future,

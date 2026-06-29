@@ -117,13 +117,17 @@ class FileContent {
   final int size;
   final bool truncated;
   final bool binary;
+  final String hash; // for optimistic-concurrency save (see /fs/write)
 
   FileContent.fromJson(Map<String, dynamic> j)
       : path = j['path'] as String? ?? '',
         content = j['content'] as String? ?? '',
         size = (j['size'] as num?)?.toInt() ?? 0,
         truncated = j['truncated'] == true,
-        binary = j['binary'] == true;
+        binary = j['binary'] == true,
+        hash = j['hash'] as String? ?? '';
+
+  bool get editable => !binary && !truncated;
 }
 
 class RateWindow {

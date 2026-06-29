@@ -182,6 +182,22 @@ class DaemonClient {
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
+  /// Atomic write with optimistic concurrency. Returns the daemon's JSON:
+  /// {ok, hash, size} on success, or {ok:false, conflict:true, error} (HTTP 409)
+  /// when the file changed on disk since [prevHash] was read.
+  Future<Map<String, dynamic>> writeFile(String path, String content, {String? prevHash}) async {
+    final body = <String, dynamic>{
+      'path': path,
+      'content': content,
+      if (prevHash != null) 'prev_hash': prevHash,
+    };
+    final r = await http.post(_uri('/fs/write'), headers: _json, body: jsonEncode(body));
+    if (r.statusCode == 200 || r.statusCode == 409) {
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    }
+    throw _err('save file', r);
+  }
+
   // ---- git (server-side, scoped to a session's workspace) ----
 
   Future<Map<String, dynamic>> _gitPost(String op, Map<String, dynamic> body) async {
