@@ -75,6 +75,46 @@ Future<T?> presentScreen<T>(
   );
 }
 
+/// Present a SELF-CONTAINED screen (no internal sub-pushes) as a centered modal
+/// that returns a value. The screen's own `Navigator.pop(context, value)` closes
+/// the modal and yields that value (e.g. AddInstanceScreen returning an Instance).
+/// Falls back to a full-screen push on phones.
+Future<T?> showModal<T>(
+  BuildContext context,
+  Widget child, {
+  double width = 560,
+  double height = 540,
+}) {
+  final view = View.of(context);
+  final windowWidth = view.physicalSize.width / view.devicePixelRatio;
+  if (windowWidth < kDesktopBreakpoint) {
+    return Navigator.of(context).push<T>(MaterialPageRoute(builder: (_) => child));
+  }
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'modal',
+    barrierColor: Colors.black.withValues(alpha: 0.5),
+    transitionDuration: const Duration(milliseconds: 160),
+    pageBuilder: (ctx, _, __) => Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: width, maxHeight: height),
+          child: _frame(child, rounded: true),
+        ),
+      ),
+    ),
+    transitionBuilder: (ctx, anim, _, child) {
+      final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(scale: Tween(begin: 0.98, end: 1.0).animate(curved), child: child),
+      );
+    },
+  );
+}
+
 Widget _frame(Widget child, {required bool rounded}) => Material(
       color: AppColors.bg,
       borderRadius: rounded ? BorderRadius.circular(R.card) : null,

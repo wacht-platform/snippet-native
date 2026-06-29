@@ -65,9 +65,7 @@ class _DesktopShellState extends State<DesktopShell> {
   }
 
   Future<void> _addInstance() async {
-    final inst = await Navigator.of(context).push<Instance>(
-      MaterialPageRoute(builder: (_) => const AddInstanceScreen()),
-    );
+    final inst = await showModal<Instance>(context, const AddInstanceScreen(), width: 560, height: 520);
     if (inst == null) return;
     final items = [..._instances, inst];
     await _store.save(items);
@@ -106,10 +104,10 @@ class _DesktopShellState extends State<DesktopShell> {
   Widget _mainPane() {
     final client = _client;
     if (client == null) {
-      return const EmptyState(icon: 'cpu', title: 'No instance', body: 'Add a daemon connection to begin.');
+      return _welcome();
     }
     if (_sessionId == null) {
-      return const EmptyState(icon: 'layers', title: 'No session selected', body: 'Pick a session on the left, or start a new one.');
+      return const Center(child: EmptyState(icon: 'layers', title: 'No session selected', body: 'Pick a session on the left, or start a new one.'));
     }
     // Pane-scoped MediaQuery so window-width sizing (chat bubbles) fits the pane.
     return LayoutBuilder(builder: (ctx, c) {
@@ -126,6 +124,36 @@ class _DesktopShellState extends State<DesktopShell> {
         ),
       );
     });
+  }
+
+  Widget _welcome() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: const AppIcon('cpu', size: 30, color: AppColors.accent),
+          ),
+          const SizedBox(height: 18),
+          Text('Welcome to snippet', style: sans(20, weight: FontWeight.w600, color: AppColors.fg1)),
+          const SizedBox(height: 8),
+          Text(
+            'Connect to a snippet serve daemon to browse sessions, edit files, and drive the agent.',
+            textAlign: TextAlign.center,
+            style: sans(13.5, height: 1.5, color: AppColors.fg3),
+          ),
+          const SizedBox(height: 20),
+          Btn('Add instance', icon: 'plus', onTap: _addInstance),
+        ]),
+      ),
+    );
   }
 }
 
@@ -229,7 +257,7 @@ class _SidebarState extends State<_Sidebar> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.bg,
+      color: AppColors.surface1, // subtle panel shade distinct from the main pane
       child: Column(children: [
         _instanceHeader(),
         const Divider(height: 1, thickness: 1, color: AppColors.border),
