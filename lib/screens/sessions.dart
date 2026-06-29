@@ -27,7 +27,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
     _future = widget.client.sessions();
   }
 
-  void _refresh() => setState(() => _future = widget.client.sessions());
+  void _refresh() => setState(() { _future = widget.client.sessions(); });
 
   Future<void> _open(String id, String title, [String? profile]) async {
     await Navigator.push(

@@ -134,12 +134,14 @@ Future<void> resumeWatchingIfEnabled() async {
 // Tell the task whether the app is foreground and which session is open, so it
 // can suppress a notification the user is already looking at.
 void reportForeground(bool fg) {
+  if (!kMobile) return;
   try {
     FlutterForegroundTask.sendDataToTask({'fg': fg});
   } catch (_) {}
 }
 
 void reportOpenSession(String? key) {
+  if (!kMobile) return;
   try {
     FlutterForegroundTask.sendDataToTask({'open': key ?? ''});
   } catch (_) {}

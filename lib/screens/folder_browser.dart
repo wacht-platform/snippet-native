@@ -23,7 +23,7 @@ class _FolderBrowserState extends State<FolderBrowser> {
     _future = widget.client.fs(null);
   }
 
-  void _go(String? path) => setState(() => _future = widget.client.fs(path));
+  void _go(String? path) => setState(() { _future = widget.client.fs(path); });
 
   Future<void> _open(String folder) async {
     setState(() => _opening = true);

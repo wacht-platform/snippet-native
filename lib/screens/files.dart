@@ -30,7 +30,7 @@ class _FileExplorerState extends State<FileExplorer> {
     _future = widget.client.fs(widget.start);
   }
 
-  void _go(String? path) => setState(() => _future = widget.client.fs(path));
+  void _go(String? path) => setState(() { _future = widget.client.fs(path); });
 
   void _openFile(FsEntry e) => Navigator.push(
         context,

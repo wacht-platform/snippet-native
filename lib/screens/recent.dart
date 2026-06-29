@@ -28,7 +28,7 @@ class _RecentSessionsScreenState extends State<RecentSessionsScreen> {
     _future = widget.client.sessions(limit: 60);
   }
 
-  void _reload() => setState(() => _future = widget.client.sessions(limit: 60));
+  void _reload() => setState(() { _future = widget.client.sessions(limit: 60); });
 
   String _ago(int unixSec) {
     if (unixSec == 0) return '';
