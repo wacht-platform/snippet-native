@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'platform.dart';
 import 'theme.dart';
 
 /// Open a markdown link in the external browser (fire-and-forget).
@@ -183,7 +184,8 @@ class Btn extends StatelessWidget {
       BtnVariant.ghost => (Colors.transparent, AppColors.fg2, null),
       BtnVariant.danger => (AppColors.dangerBg, AppColors.danger, AppColors.danger.withValues(alpha: 0.3)),
     };
-    final h = small ? 34.0 : 44.0;
+    // Shorter on desktop (mouse), roomy touch targets on mobile.
+    final h = small ? (kMobile ? 34.0 : 30.0) : (kMobile ? 44.0 : 36.0);
     final child = Row(
       mainAxisSize: full ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,

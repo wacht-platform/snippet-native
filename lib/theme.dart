@@ -50,6 +50,10 @@ class R {
 }
 
 /// Type helpers — Geist (sans) + Geist Mono, per the handoff recipes.
+// Typographic choice: never go heavier than regular (400). Weight passed by call
+// sites is capped here so the whole app stays light.
+FontWeight _cap(FontWeight w) => w.value > 400 ? FontWeight.w400 : w;
+
 TextStyle sans(double size,
         {FontWeight weight = FontWeight.w400,
         double? height,
@@ -57,7 +61,7 @@ TextStyle sans(double size,
         Color color = AppColors.fg1}) =>
     GoogleFonts.geist(
       fontSize: size,
-      fontWeight: weight,
+      fontWeight: _cap(weight),
       height: height,
       letterSpacing: spacing,
       color: color,
@@ -69,7 +73,7 @@ TextStyle mono(double size,
         Color color = AppColors.fg1}) =>
     GoogleFonts.geistMono(
       fontSize: size,
-      fontWeight: weight,
+      fontWeight: _cap(weight),
       height: height,
       color: color,
     );
@@ -90,8 +94,20 @@ ThemeData buildAppTheme() {
     dividerColor: AppColors.border,
     splashColor: AppColors.surface3.withValues(alpha: 0.4),
     highlightColor: AppColors.surface3.withValues(alpha: 0.3),
-    textTheme: GoogleFonts.geistTextTheme(base.textTheme)
-        .apply(bodyColor: AppColors.fg1, displayColor: AppColors.fg1),
+    textTheme: _allRegular(GoogleFonts.geistTextTheme(base.textTheme)
+        .apply(bodyColor: AppColors.fg1, displayColor: AppColors.fg1)),
+  );
+}
+
+/// Force every text style to regular weight (no >400 anywhere).
+TextTheme _allRegular(TextTheme t) {
+  TextStyle? r(TextStyle? s) => s?.copyWith(fontWeight: FontWeight.w400);
+  return t.copyWith(
+    displayLarge: r(t.displayLarge), displayMedium: r(t.displayMedium), displaySmall: r(t.displaySmall),
+    headlineLarge: r(t.headlineLarge), headlineMedium: r(t.headlineMedium), headlineSmall: r(t.headlineSmall),
+    titleLarge: r(t.titleLarge), titleMedium: r(t.titleMedium), titleSmall: r(t.titleSmall),
+    bodyLarge: r(t.bodyLarge), bodyMedium: r(t.bodyMedium), bodySmall: r(t.bodySmall),
+    labelLarge: r(t.labelLarge), labelMedium: r(t.labelMedium), labelSmall: r(t.labelSmall),
   );
 }
 

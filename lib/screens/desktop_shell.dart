@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../api.dart';
@@ -6,7 +8,6 @@ import '../panel.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'add_instance.dart';
 import 'files.dart';
 import 'folder_browser.dart';
 import 'models.dart';
@@ -64,10 +65,9 @@ class _DesktopShellState extends State<DesktopShell> {
     });
   }
 
-  Future<void> _addInstance() async {
-    final inst = await showModal<Instance>(context, const AddInstanceScreen(), width: 560, height: 520);
-    if (inst == null) return;
-    final items = [..._instances, inst];
+  Future<void> _onInstanceAdded(Instance inst) async {
+    final items = [..._instances]..removeWhere((e) => e.url == inst.url);
+    items.add(inst);
     await _store.save(items);
     if (!mounted) return;
     setState(() => _instances = items);
@@ -91,7 +91,7 @@ class _DesktopShellState extends State<DesktopShell> {
                     selectedSessionId: _sessionId,
                     onSelectInstance: _selectInstance,
                     onOpenSession: _openSession,
-                    onAddInstance: _addInstance,
+                    onInstanceAdded: _onInstanceAdded,
                   ),
                 ),
                 const VerticalDivider(width: 1, thickness: 1, color: AppColors.border),
@@ -129,31 +129,118 @@ class _DesktopShellState extends State<DesktopShell> {
   Widget _welcome() {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: AppColors.surface2,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.border),
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Center(
+            child: Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(color: AppColors.surface2, borderRadius: BorderRadius.circular(R.card), border: Border.all(color: AppColors.border)),
+              child: const AppIcon('cpu', size: 24, color: AppColors.fg3),
             ),
-            child: const AppIcon('cpu', size: 30, color: AppColors.accent),
+          ),
+          const SizedBox(height: 16),
+          Text('No instance connected', textAlign: TextAlign.center, style: sans(15, color: AppColors.fg1)),
+          const SizedBox(height: 6),
+          Text.rich(
+            TextSpan(style: sans(12.5, height: 1.5, color: AppColors.fg3), children: [
+              const TextSpan(text: 'Run '),
+              TextSpan(text: 'snippet serve', style: mono(12, color: AppColors.fg2)),
+              const TextSpan(text: ' on a machine, then paste the connection string it prints.'),
+            ]),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 18),
-          Text('Welcome to snippet', style: sans(20, weight: FontWeight.w600, color: AppColors.fg1)),
-          const SizedBox(height: 8),
-          Text(
-            'Connect to a snippet serve daemon to browse sessions, edit files, and drive the agent.',
-            textAlign: TextAlign.center,
-            style: sans(13.5, height: 1.5, color: AppColors.fg3),
-          ),
-          const SizedBox(height: 20),
-          Btn('Add instance', icon: 'plus', onTap: _addInstance),
+          _AddInstanceField(onAdded: _onInstanceAdded),
         ]),
       ),
     );
+  }
+}
+
+/// Inline "add connection": a button that morphs into a URL/token field and
+/// connects on submit (replaces the full-screen add flow on desktop).
+class _AddInstanceField extends StatefulWidget {
+  final void Function(Instance) onAdded;
+  final bool dense;
+  const _AddInstanceField({required this.onAdded, this.dense = false});
+  @override
+  State<_AddInstanceField> createState() => _AddInstanceFieldState();
+}
+
+class _AddInstanceFieldState extends State<_AddInstanceField> {
+  final _ctrl = TextEditingController();
+  bool _open = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  (String, String)? _parse(String raw) {
+    raw = raw.trim();
+    final uri = Uri.tryParse(raw);
+    if (uri != null && uri.scheme.startsWith('http') && (uri.queryParameters['token'] ?? '').isNotEmpty) {
+      final token = uri.queryParameters['token']!;
+      final port = uri.hasPort ? ':${uri.port}' : '';
+      return ('${uri.scheme}://${uri.host}$port', token);
+    }
+    try {
+      final m = jsonDecode(raw);
+      if (m is Map && m['url'] is String && m['token'] is String) return (m['url'] as String, m['token'] as String);
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _connect() async {
+    if (_busy) return;
+    final parsed = _parse(_ctrl.text);
+    if (parsed == null) {
+      setState(() => _error = 'Not a valid connection string.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final (url, token) = parsed;
+      final cfg = await DaemonClient(url, token).getConfig();
+      final name = cfg.hostname.isNotEmpty ? cfg.hostname : hostOf(url);
+      widget.onAdded(Instance(name: name, url: url, token: token));
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _open = false;
+          _ctrl.clear();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Could not connect.';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_open) {
+      return Btn('Add instance', icon: 'plus', small: widget.dense, full: true, onTap: () => setState(() => _open = true));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(child: AppField(controller: _ctrl, mono: true, autofocus: true, hint: 'https://host/?token=…', onSubmitted: (_) => _connect())),
+        const SizedBox(width: 8),
+        Btn(_busy ? '…' : 'Connect', small: true, disabled: _busy, onTap: _connect),
+      ]),
+      if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: sans(11.5, color: AppColors.danger))),
+    ]);
   }
 }
 
@@ -164,7 +251,7 @@ class _Sidebar extends StatefulWidget {
   final String? selectedSessionId;
   final void Function(Instance) onSelectInstance;
   final void Function(String id, String title, String? profile) onOpenSession;
-  final VoidCallback onAddInstance;
+  final void Function(Instance) onInstanceAdded;
   const _Sidebar({
     required this.instances,
     required this.active,
@@ -172,7 +259,7 @@ class _Sidebar extends StatefulWidget {
     required this.selectedSessionId,
     required this.onSelectInstance,
     required this.onOpenSession,
-    required this.onAddInstance,
+    required this.onInstanceAdded,
   });
   @override
   State<_Sidebar> createState() => _SidebarState();
@@ -181,6 +268,7 @@ class _Sidebar extends StatefulWidget {
 class _SidebarState extends State<_Sidebar> {
   List<SessionInfo>? _sessions;
   bool _loading = false;
+  bool _adding = false; // inline add-instance field revealed
   String? _error;
 
   @override
@@ -242,10 +330,10 @@ class _SidebarState extends State<_Sidebar> {
     presentScreen(context, builder: (_, close) => FileExplorer(client: c, onClose: close));
   }
 
-  void _openModels() {
+  void _openSettings() {
     final c = widget.client;
     if (c == null) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelsScreen(client: c)));
+    presentScreen(context, builder: (_, close) => _SettingsPanel(client: c, onClose: close));
   }
 
   String _pill(String s) => switch (s) {
@@ -256,33 +344,56 @@ class _SidebarState extends State<_Sidebar> {
 
   @override
   Widget build(BuildContext context) {
+    final hasClient = widget.client != null;
     return Container(
       color: AppColors.surface1, // subtle panel shade distinct from the main pane
       child: Column(children: [
-        _instanceHeader(),
+        Row(children: [
+          Expanded(child: _instanceHeader()),
+          if (hasClient)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: IconBtn('settings', size: 34, iconSize: 17, tooltip: 'Settings', onTap: _openSettings),
+            ),
+        ]),
         const Divider(height: 1, thickness: 1, color: AppColors.border),
-        // Sessions header
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 6),
-          child: Row(children: [
-            Expanded(child: Text('SESSIONS', style: sans(11, weight: FontWeight.w600, color: AppColors.fg3, spacing: 0.4))),
-            IconBtn('refresh', size: 30, iconSize: 15, onTap: _loading ? null : _load),
-          ]),
-        ),
-        Expanded(child: _sessionList()),
-        const Divider(height: 1, thickness: 1, color: AppColors.border),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-          child: Column(children: [
-            Btn('New session', icon: 'plus', full: true, small: true, onTap: widget.client == null ? null : _newSession),
-            const SizedBox(height: 6),
-            Row(children: [
-              Expanded(child: Btn('Files', icon: 'folder', variant: BtnVariant.secondary, small: true, onTap: widget.client == null ? null : _openFiles)),
-              const SizedBox(width: 6),
-              Expanded(child: Btn('Models', icon: 'cpu', variant: BtnVariant.secondary, small: true, onTap: widget.client == null ? null : _openModels)),
+        if (_adding)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+            child: _AddInstanceField(dense: true, onAdded: (inst) {
+              setState(() => _adding = false);
+              widget.onInstanceAdded(inst);
+            }),
+          ),
+        // No instance → no sessions; just a hint (the main pane shows the welcome).
+        if (!hasClient)
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text('Add an instance to begin.', textAlign: TextAlign.center, style: sans(12.5, color: AppColors.fg4)),
+              ),
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 6),
+            child: Row(children: [
+              Expanded(child: Text('SESSIONS', style: sans(11, color: AppColors.fg3, spacing: 0.4))),
+              IconBtn('refresh', size: 30, iconSize: 15, onTap: _loading ? null : _load),
             ]),
-          ]),
-        ),
+          ),
+          Expanded(child: _sessionList()),
+          const Divider(height: 1, thickness: 1, color: AppColors.border),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+            child: Column(children: [
+              Btn('New session', icon: 'plus', full: true, small: true, onTap: _newSession),
+              const SizedBox(height: 6),
+              Btn('Files', icon: 'folder', variant: BtnVariant.secondary, full: true, small: true, onTap: _openFiles),
+            ]),
+          ),
+        ],
       ]),
     );
   }
@@ -295,7 +406,7 @@ class _SidebarState extends State<_Sidebar> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.md), side: const BorderSide(color: AppColors.border2)),
       onSelected: (v) {
         if (v == '__add') {
-          widget.onAddInstance();
+          setState(() => _adding = true);
         } else {
           final inst = widget.instances.firstWhere((i) => i.url == v, orElse: () => widget.instances.first);
           widget.onSelectInstance(inst);
@@ -317,13 +428,13 @@ class _SidebarState extends State<_Sidebar> {
         ])),
       ],
       child: Container(
-        height: 54,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: 48,
+        padding: const EdgeInsets.fromLTRB(14, 0, 10, 0),
         child: Row(children: [
-          const AppIcon('cpu', size: 17, color: AppColors.accent),
-          const SizedBox(width: 10),
-          Expanded(child: Text(active?.label ?? 'No instance', maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(14, weight: FontWeight.w600, color: AppColors.fg1))),
-          const AppIcon('chevron-down', size: 16, color: AppColors.fg3),
+          const AppIcon('cpu', size: 16, color: AppColors.accent),
+          const SizedBox(width: 9),
+          Expanded(child: Text(active?.label ?? 'No instance', maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13.5, color: AppColors.fg1))),
+          const AppIcon('chevron-down', size: 15, color: AppColors.fg3),
         ]),
       ),
     );
@@ -370,6 +481,69 @@ class _SidebarState extends State<_Sidebar> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Desktop settings drawer. Hosts Models (and room for more later).
+class _SettingsPanel extends StatelessWidget {
+  final DaemonClient client;
+  final VoidCallback onClose;
+  const _SettingsPanel({required this.client, required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: Column(children: [
+          SnAppBar(title: 'Settings', onBack: onClose),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              children: [
+                _tile(context, 'cpu', 'Models', 'Providers & active model',
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelsScreen(client: client)))),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _tile(BuildContext context, String icon, String label, String sub, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(R.md),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(R.md),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(children: [
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: AppColors.surface3, borderRadius: BorderRadius.circular(R.sm)),
+                child: AppIcon(icon, size: 15, color: AppColors.fg2),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(label, style: sans(13, color: AppColors.fg1)),
+                  const SizedBox(height: 1),
+                  Text(sub, style: sans(11, color: AppColors.fg4)),
+                ]),
+              ),
+              const AppIcon('chevron-right', size: 15, color: AppColors.fg4),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }
