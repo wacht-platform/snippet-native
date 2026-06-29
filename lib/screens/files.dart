@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:re_editor/re_editor.dart';
 
 import '../api.dart';
+import '../highlight.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -133,12 +135,42 @@ class FileViewer extends StatefulWidget {
 }
 
 class _FileViewerState extends State<FileViewer> {
-  late Future<FileContent> _future;
+  final CodeLineEditingController _controller = CodeLineEditingController();
+  FileContent? _f;
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _future = widget.client.readFile(widget.path);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final f = await widget.client.readFile(widget.path);
+      if (!mounted) return;
+      if (!f.binary) _controller.text = f.content;
+      setState(() {
+        _f = f;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = '$e';
+          _loading = false;
+        });
+      }
+    }
   }
 
   String _bytes(int b) {
@@ -149,6 +181,7 @@ class _FileViewerState extends State<FileViewer> {
 
   @override
   Widget build(BuildContext context) {
+    final f = _f;
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -156,55 +189,37 @@ class _FileViewerState extends State<FileViewer> {
           SnAppBar(title: widget.name, subtitle: widget.path, onBack: () => Navigator.pop(context), actions: [
             IconBtn('edit', tooltip: 'Edit', onTap: () => Navigator.push(context, MaterialPageRoute(
               builder: (_) => EditorScreen(client: widget.client, path: widget.path, name: widget.name),
-            )).then((_) => setState(() => _future = widget.client.readFile(widget.path)))),
+            )).then((_) => _load())),
           ]),
-          Expanded(
-            child: FutureBuilder<FileContent>(
-              future: _future,
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)));
-                }
-                if (snap.hasError) {
-                  return Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('${snap.error}', textAlign: TextAlign.center, style: sans(12.5, color: AppColors.fg3))));
-                }
-                final f = snap.data!;
-                if (f.binary) {
-                  return EmptyState(icon: 'file', title: 'Binary file', body: '${_bytes(f.size)} — can\'t display as text.');
-                }
-                final lines = f.content.split('\n');
-                final gw = '${lines.length}'.length * 8.0 + 8;
-                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
-                    child: Text('${lines.length} lines · ${_bytes(f.size)}${f.truncated ? ' · truncated' : ''}',
-                        style: mono(10.5, color: AppColors.fg4)),
-                  ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      primary: true,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            for (var i = 0; i < lines.length; i++)
-                              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                SizedBox(width: gw, child: Text('${i + 1}', textAlign: TextAlign.right, style: mono(11.5, height: 1.5, color: AppColors.diffGutter))),
-                                const SizedBox(width: 10),
-                                Text(lines[i].isEmpty ? ' ' : lines[i], style: mono(11.5, height: 1.5, color: AppColors.fg1)),
-                              ]),
-                          ]),
-                        ),
-                      ),
-                    ),
-                  ),
-                ]);
-              },
+          if (_loading)
+            const Expanded(child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3))))
+          else if (_error != null)
+            Expanded(child: EmptyState(icon: 'alert-triangle', title: 'Failed to load', body: _error!))
+          else if (f!.binary)
+            Expanded(child: EmptyState(icon: 'file', title: 'Binary file', body: '${_bytes(f.size)} — can\'t display as text.'))
+          else ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
+              child: Text('${f.content.split('\n').length} lines · ${_bytes(f.size)}${f.truncated ? ' · truncated' : ''}',
+                  style: mono(10.5, color: AppColors.fg4)),
             ),
-          ),
+            Expanded(
+              child: CodeEditor(
+                controller: _controller,
+                readOnly: true,
+                wordWrap: false,
+                style: codeEditorStyle(widget.name),
+                indicatorBuilder: (context, editingController, chunkController, notifier) {
+                  return Row(children: [
+                    DefaultCodeLineNumber(controller: editingController, notifier: notifier),
+                    DefaultCodeChunkIndicator(width: 20, controller: chunkController, notifier: notifier),
+                  ]);
+                },
+              ),
+            ),
+          ],
         ]),
       ),
     );

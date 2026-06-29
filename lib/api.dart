@@ -209,11 +209,12 @@ class DaemonClient {
   Future<GitStatus> gitStatus(String session) async =>
       GitStatus.fromJson(await _gitPost('status', {'session': session}));
 
-  Future<String> gitDiff(String session, {String? file, bool staged = false}) async {
+  Future<String> gitDiff(String session, {String? file, bool staged = false, bool untracked = false}) async {
     final d = await _gitPost('diff', {
       'session': session,
       if (file != null) 'file': file,
       'staged': staged,
+      'untracked': untracked,
     });
     return d['patch'] as String? ?? '';
   }

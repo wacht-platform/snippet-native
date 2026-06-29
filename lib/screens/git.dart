@@ -318,7 +318,8 @@ class _DiffViewState extends State<_DiffView> {
   Future<void> _load() async {
     try {
       // Untracked files aren't in the index; their full content shows as an add.
-      final p = await widget.client.gitDiff(widget.sessionId, file: widget.file, staged: widget.staged);
+      final p = await widget.client.gitDiff(widget.sessionId,
+          file: widget.file, staged: widget.staged, untracked: widget.untracked);
       if (!mounted) return;
       setState(() {
         _patch = p;

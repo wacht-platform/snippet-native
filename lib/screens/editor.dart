@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:re_editor/re_editor.dart';
-import 'package:re_highlight/languages/all.dart';
-import 'package:re_highlight/styles/atom-one-dark.dart';
 
 import '../api.dart';
+import '../highlight.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -130,17 +129,6 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  CodeHighlightTheme? _codeTheme() {
-    final ext = widget.name.contains('.') ? widget.name.split('.').last.toLowerCase() : widget.name.toLowerCase();
-    final lang = _extToLang[ext];
-    final mode = lang == null ? null : builtinAllLanguages[lang];
-    if (mode == null) return null;
-    return CodeHighlightTheme(
-      languages: {lang!: CodeHighlightThemeMode(mode: mode)},
-      theme: atomOneDarkTheme,
-    );
-  }
-
   Future<void> _maybePop() async {
     if (!_dirty) {
       if (mounted) Navigator.pop(context);
@@ -191,10 +179,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: CodeEditor(
                   controller: _controller,
                   wordWrap: false,
-                  style: CodeEditorStyle(
-                    fontSize: 13,
-                    codeTheme: _codeTheme(),
-                  ),
+                  style: codeEditorStyle(widget.name),
                   indicatorBuilder: (context, editingController, chunkController, notifier) {
                     return Row(children: [
                       DefaultCodeLineNumber(controller: editingController, notifier: notifier),
@@ -209,16 +194,3 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 }
-
-const Map<String, String> _extToLang = {
-  'dart': 'dart',
-  'js': 'javascript', 'jsx': 'javascript', 'mjs': 'javascript', 'cjs': 'javascript',
-  'ts': 'typescript', 'tsx': 'typescript',
-  'py': 'python', 'rs': 'rust', 'go': 'go', 'java': 'java', 'kt': 'kotlin', 'swift': 'swift',
-  'c': 'c', 'h': 'c', 'cpp': 'cpp', 'cc': 'cpp', 'cxx': 'cpp', 'hpp': 'cpp',
-  'cs': 'csharp', 'rb': 'ruby', 'php': 'php',
-  'sh': 'bash', 'bash': 'bash', 'zsh': 'bash',
-  'json': 'json', 'yaml': 'yaml', 'yml': 'yaml', 'toml': 'ini', 'ini': 'ini',
-  'xml': 'xml', 'html': 'xml', 'htm': 'xml', 'css': 'css', 'scss': 'scss',
-  'md': 'markdown', 'markdown': 'markdown', 'sql': 'sql',
-};
