@@ -3,48 +3,50 @@ import 'package:google_fonts/google_fonts.dart';
 
 /// snippet — Wacht design system (dark), one electric-blue accent.
 /// Resolved dark-theme tokens from the design handoff.
+// Graphite — neutral zinc dark with a refined electric-blue accent.
 class AppColors {
-  static const bg = Color(0xFF1C1C1C);
-  static const surface1 = Color(0xFF232323); // cards, sheets, agent bubbles
-  static const surface2 = Color(0xFF2B2B2B); // inputs, chips, status strip
-  static const surface3 = Color(0xFF333333); // pressed / hover raise
+  static const bg = Color(0xFF0E0E10); // app background
+  static const surface1 = Color(0xFF18181B); // cards, sheets, agent bubbles
+  static const surface2 = Color(0xFF212126); // inputs, chips, status strip
+  static const surface3 = Color(0xFF2E2E34); // pressed / hover raise
 
-  static const fg1 = Color(0xFFF5F5F5); // primary text
-  static const fg2 = Color(0xFFAEAEAE); // secondary text, icons
-  static const fg3 = Color(0xFF777777); // muted / metadata / paths
-  static const fg4 = Color(0xFF5C5C5C); // faint icons, disabled
+  static const fg1 = Color(0xFFFAFAFA); // primary text
+  static const fg2 = Color(0xFFA1A1AA); // secondary text, icons
+  static const fg3 = Color(0xFF71717A); // muted / metadata / paths
+  static const fg4 = Color(0xFF52525B); // faint icons, disabled
 
-  static const border = Color(0x14FFFFFF); // hairline ~8%
-  static const border2 = Color(0x24FFFFFF); // hover/emphasis ~14%
+  static const border = Color(0x12FFFFFF); // hairline ~7%
+  static const border2 = Color(0x20FFFFFF); // hover/emphasis ~12%
 
-  static const accent = Color(0xFF3B7DF7);
-  static const accentHover = Color(0xFF5790F8);
-  static const accentFg = Color(0xFFF6F9FF);
-  static const accentBg = Color(0x293B7DF7); // 16%
-  static const accentLine = Color(0x663B7DF7); // 40%
-  static const accentRing = Color(0x593B7DF7); // ~35%
+  static const accent = Color(0xFF3B82F6);
+  static const accentHover = Color(0xFF60A5FA);
+  static const accentFg = Color(0xFFFFFFFF);
+  static const accentBg = Color(0x243B82F6); // ~14%
+  static const accentLine = Color(0x663B82F6); // 40%
+  static const accentRing = Color(0x553B82F6); // ~33%
 
-  static const ok = Color(0xFF39C57E);
-  static const okBg = Color(0x2939C57E);
-  static const run = Color(0xFFD9A441);
-  static const runBg = Color(0x29D9A441);
-  static const danger = Color(0xFFEB5C4D);
-  static const dangerBg = Color(0x29EB5C4D);
+  static const ok = Color(0xFF22C55E);
+  static const okBg = Color(0x2622C55E);
+  static const run = Color(0xFFF59E0B);
+  static const runBg = Color(0x26F59E0B);
+  static const danger = Color(0xFFEF4444);
+  static const dangerBg = Color(0x26EF4444);
 
   // diff line tints (subtler than the *Bg chips)
-  static const diffAddBg = Color(0x2239C57E);
-  static const diffDelBg = Color(0x22EB5C4D);
-  static const diffAddFg = Color(0xFF93E2B7);
-  static const diffDelFg = Color(0xFFF09C90);
-  static const diffGutter = Color(0xFF4A4A4A);
+  static const diffAddBg = Color(0x2022C55E);
+  static const diffDelBg = Color(0x20EF4444);
+  static const diffAddFg = Color(0xFF86EFAC);
+  static const diffDelFg = Color(0xFFFCA5A5);
+  static const diffGutter = Color(0xFF3F3F46);
 }
 
+// Sharp / minimal — small radii throughout.
 class R {
-  static const card = 16.0;
-  static const md = 12.0; // buttons, inputs, icon buttons
-  static const sm = 8.0; // menu items, list rows
-  static const xs = 6.0; // inner chips
-  static const sheetTop = 22.0;
+  static const card = 6.0;
+  static const md = 6.0; // buttons, inputs, icon buttons
+  static const sm = 5.0; // menu items, list rows
+  static const xs = 4.0; // inner chips
+  static const sheetTop = 14.0;
 }
 
 /// Type helpers — Geist (sans) + Geist Mono, per the handoff recipes.
