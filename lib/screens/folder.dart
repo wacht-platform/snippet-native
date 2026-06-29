@@ -102,7 +102,9 @@ class _FolderScreenState extends State<FolderScreen> with SingleTickerProviderSt
     final folder = _fs?.path;
     if (folder == null) return;
     try {
-      final id = await widget.client.openSession(folder);
+      // Always start a fresh conversation — the folder's existing sessions stay
+      // listed above and can be resumed by tapping them.
+      final id = await widget.client.openSession(folder, newConversation: true);
       if (!mounted) return;
       final name = folder.split('/').where((s) => s.isNotEmpty).lastOrNull ?? folder;
       Navigator.push(context, MaterialPageRoute(

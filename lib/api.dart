@@ -78,8 +78,9 @@ class DaemonClient {
   }
 
   Future<String> openSession(String folder,
-      {bool resume = true, String? profile}) async {
+      {bool resume = true, String? profile, bool newConversation = false}) async {
     final body = <String, dynamic>{'folder': folder, 'resume': resume};
+    if (newConversation) body['new_conversation'] = true;
     if (profile != null && profile.isNotEmpty) body['profile'] = profile;
     final r = await http.post(_uri('/sessions'),
         headers: _json, body: jsonEncode(body));
