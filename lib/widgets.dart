@@ -259,13 +259,13 @@ class AddCard extends StatelessWidget {
         painter: _DashedBorder(color: AppColors.border2, radius: R.card),
         child: Container(
           width: double.infinity,
-          constraints: const BoxConstraints(minHeight: 60),
-          padding: const EdgeInsets.all(18),
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.all(12),
           alignment: Alignment.center,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const AppIcon('plus', size: 17),
-            const SizedBox(width: 9),
-            Text(label, style: sans(13, weight: FontWeight.w500, color: AppColors.fg2)),
+            const AppIcon('plus', size: 15),
+            const SizedBox(width: 8),
+            Text(label, style: sans(12.5, weight: FontWeight.w500, color: AppColors.fg2)),
           ]),
         ),
       ),

@@ -122,7 +122,7 @@ class _InstancesScreenState extends State<InstancesScreen> {
             child: instances == null
                 ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)))
                 : ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
                     children: [
                       if (empty) ...[
                         const EmptyState(
@@ -130,10 +130,10 @@ class _InstancesScreenState extends State<InstancesScreen> {
                           title: 'No instances yet',
                           body: 'Connect to a machine running snippet serve to start coding from your phone.',
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                       ],
                       ...instances.asMap().entries.map((e) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.only(bottom: 8),
                             child: _InstanceCard(
                               key: ValueKey('${e.value.url}|${e.value.token}'),
                               instance: e.value,
@@ -196,21 +196,22 @@ class _InstanceCardState extends State<_InstanceCard> {
     final inst = widget.instance;
     final offline = _status == 'offline';
     return AppCard(
+      padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
       onTap: widget.edit || offline ? null : widget.onOpen,
       child: Row(children: [
         if (widget.edit)
           Column(mainAxisSize: MainAxisSize.min, children: [
-            Opacity(opacity: widget.first ? 0.3 : 1, child: IconBtn('chevron-up', size: 24, iconSize: 16, onTap: widget.onUp)),
-            Opacity(opacity: widget.last ? 0.3 : 1, child: IconBtn('chevron-down', size: 24, iconSize: 16, onTap: widget.onDown)),
+            Opacity(opacity: widget.first ? 0.3 : 1, child: IconBtn('chevron-up', size: 22, iconSize: 15, onTap: widget.onUp)),
+            Opacity(opacity: widget.last ? 0.3 : 1, child: IconBtn('chevron-down', size: 22, iconSize: 15, onTap: widget.onDown)),
           ])
         else
           StatusDot(status: _status),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(inst.label, style: sans(14.5, weight: FontWeight.w600, color: AppColors.fg1)),
-            const SizedBox(height: 3),
-            Text(hostOf(inst.url), maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3)),
+            Text(inst.label, style: sans(13.5, weight: FontWeight.w600, color: AppColors.fg1)),
+            const SizedBox(height: 2),
+            Text(hostOf(inst.url), maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(10.5, color: AppColors.fg3)),
             if (offline && !widget.edit)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -226,11 +227,11 @@ class _InstanceCardState extends State<_InstanceCard> {
           ]),
         ),
         if (widget.edit)
-          IconBtn('trash', size: 36, iconSize: 17, onTap: widget.onRemove)
+          IconBtn('trash', size: 32, iconSize: 16, onTap: widget.onRemove)
         else if (offline)
-          const AppIcon('wifi-off', size: 17, color: AppColors.danger)
+          const AppIcon('wifi-off', size: 16, color: AppColors.danger)
         else
-          const AppIcon('chevron-right', size: 18, color: AppColors.fg4),
+          const AppIcon('chevron-right', size: 16, color: AppColors.fg4),
       ]),
     );
   }
