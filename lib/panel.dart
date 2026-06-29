@@ -33,12 +33,10 @@ Future<T?> presentScreen<T>(
     transitionDuration: const Duration(milliseconds: 180),
     pageBuilder: (ctx, _, __) {
       void close() => Navigator.of(ctx).pop();
-      final content = ClipRRect(
-        borderRadius: BorderRadius.circular(style == PanelStyle.dialog ? R.card : 0),
-        child: Navigator(
-          onGenerateRoute: (_) => MaterialPageRoute(builder: (c) => builder(c, close)),
-        ),
-      );
+      // Host the screen directly (no nested Navigator — that swallowed pointer
+      // events on desktop). Any sub-pushes (file viewer, diff) go to the root
+      // navigator full-screen, which is fine over a panel.
+      final content = builder(ctx, close);
       if (style == PanelStyle.dialog) {
         return Center(
           child: Padding(
