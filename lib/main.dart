@@ -12,8 +12,9 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Foreground service + notifications are mobile-only plugins (no desktop support).
-  if (kMobile) {
+  // Notifications: foreground service on mobile, in-process /events watcher on
+  // desktop (macOS/Linux). Both deliver the same session alerts.
+  if (kCanNotify) {
     await initNotifications();
     onNotifTap = (m) {
       final nav = navigatorKey.currentState;
@@ -42,7 +43,7 @@ class _SnippetAppState extends State<SnippetApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (kMobile) reportForeground(true);
+    if (kCanNotify) reportForeground(true);
   }
 
   @override
@@ -53,7 +54,7 @@ class _SnippetAppState extends State<SnippetApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!kMobile) return;
+    if (!kCanNotify) return;
     final fg = state == AppLifecycleState.resumed;
     reportForeground(fg);
     if (!fg) reportOpenSession('');

@@ -8,6 +8,16 @@ bool get kMobile =>
     (defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS);
 
+/// Desktop platforms where we watch /events in-process and raise native local
+/// notifications (no foreground service — the app stays running). macOS + Linux.
+bool get kDesktopNotify =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux);
+
+/// True wherever we can deliver session notifications at all.
+bool get kCanNotify => kMobile || kDesktopNotify;
+
 /// The desktop layout (sidebar + panes) kicks in at/above this logical width.
 const double kDesktopBreakpoint = 900;
 

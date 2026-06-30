@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../command_palette.dart';
 import '../models.dart';
+import '../notifications.dart';
 import '../panel.dart';
 import '../platform.dart';
 import '../store.dart';
@@ -639,6 +640,27 @@ class _SettingsPanel extends StatefulWidget {
 
 class _SettingsPanelState extends State<_SettingsPanel> {
   late final List<Instance> _instances = [...widget.instances];
+  bool _notif = false;
+  bool _notifBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    notificationsEnabled().then((v) {
+      if (mounted) setState(() => _notif = v);
+    });
+  }
+
+  Future<void> _toggleNotif(bool v) async {
+    setState(() => _notifBusy = true);
+    final err = await setNotificationsEnabled(v);
+    if (!mounted) return;
+    setState(() {
+      _notifBusy = false;
+      _notif = err == null ? v : _notif;
+    });
+    if (err != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+  }
 
   Future<void> _confirmRemove(Instance inst) async {
     final ok = await showAppSheet<bool>(context, title: 'Remove instance?', child: Column(
@@ -680,6 +702,10 @@ class _SettingsPanelState extends State<_SettingsPanel> {
                 const SizedBox(height: 6),
                 _tile('cpu', 'Models', 'Providers & active model',
                     () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelsScreen(client: widget.client)))),
+                if (kCanNotify) ...[
+                  const SizedBox(height: 6),
+                  _notifTile(),
+                ],
               ],
             ),
           ),
@@ -708,6 +734,33 @@ class _SettingsPanelState extends State<_SettingsPanel> {
           IconBtn('trash', size: 32, iconSize: 16, tooltip: 'Remove', onTap: () => _confirmRemove(i)),
         ]),
       ),
+    );
+  }
+
+  Widget _notifTile() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+      decoration: BoxDecoration(color: AppColors.surface2, borderRadius: BorderRadius.circular(R.md)),
+      child: Row(children: [
+        Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: AppColors.surface3, borderRadius: BorderRadius.circular(R.sm)),
+          child: const AppIcon('zap', size: 15, color: AppColors.fg2),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Notifications', style: sans(13, color: AppColors.fg1)),
+            const SizedBox(height: 1),
+            Text('Alert when a session needs input or finishes', style: sans(11, color: AppColors.fg4)),
+          ]),
+        ),
+        _notifBusy
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3))
+            : Switch(value: _notif, activeThumbColor: AppColors.accentFg, activeTrackColor: AppColors.accent, onChanged: _toggleNotif),
+      ]),
     );
   }
 

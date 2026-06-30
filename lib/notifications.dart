@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -33,43 +34,74 @@ Uri eventsUri(String baseUrl, String token) {
 // Main-isolate setup: foreground-task config + tap routing + launch handling.
 // ---------------------------------------------------------------------------
 Future<void> initNotifications() async {
-  if (!kMobile) return; // foreground task / local notifications are mobile-only
-  FlutterForegroundTask.initCommunicationPort();
-  FlutterForegroundTask.init(
-    androidNotificationOptions: AndroidNotificationOptions(
-      channelId: _fgChannel,
-      channelName: 'Background watcher',
-      channelDescription: 'Keeps watching your sessions for activity.',
-      channelImportance: NotificationChannelImportance.LOW,
-      priority: NotificationPriority.LOW,
-      onlyAlertOnce: true,
-    ),
-    iosNotificationOptions: const IOSNotificationOptions(),
-    foregroundTaskOptions: ForegroundTaskOptions(
-      eventAction: ForegroundTaskEventAction.repeat(15000),
-      autoRunOnBoot: true,
-      autoRunOnMyPackageReplaced: true,
-      allowWakeLock: true,
-      allowWifiLock: true,
-      allowAutoRestart: true,
-    ),
-  );
+  if (kMobile) {
+    FlutterForegroundTask.initCommunicationPort();
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: _fgChannel,
+        channelName: 'Background watcher',
+        channelDescription: 'Keeps watching your sessions for activity.',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        onlyAlertOnce: true,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.repeat(15000),
+        autoRunOnBoot: true,
+        autoRunOnMyPackageReplaced: true,
+        allowWakeLock: true,
+        allowWifiLock: true,
+        allowAutoRestart: true,
+      ),
+    );
 
+    await _mainNotif.initialize(
+      settings: const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
+      onDidReceiveNotificationResponse: (resp) {
+        final p = resp.payload;
+        if (p != null) _route(p);
+      },
+    );
+    // Cold start from a tapped notification.
+    final launch = await _mainNotif.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp == true) {
+      final p = launch!.notificationResponse?.payload;
+      if (p != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _route(p));
+      }
+    }
+    return;
+  }
+  // Desktop (macOS/Linux): just init the local-notifications plugin + tap routing.
+  // The /events watcher runs in-process (see _DesktopWatcher), no service needed.
+  if (!kDesktopNotify) return;
   await _mainNotif.initialize(
-    settings: const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
+    settings: const InitializationSettings(
+      macOS: DarwinInitializationSettings(requestAlertPermission: false, requestBadgePermission: false, requestSoundPermission: false),
+      linux: LinuxInitializationSettings(defaultActionName: 'Open'),
+    ),
     onDidReceiveNotificationResponse: (resp) {
       final p = resp.payload;
       if (p != null) _route(p);
     },
   );
-  // Cold start from a tapped notification.
-  final launch = await _mainNotif.getNotificationAppLaunchDetails();
-  if (launch?.didNotificationLaunchApp == true) {
-    final p = launch!.notificationResponse?.payload;
-    if (p != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _route(p));
-    }
-  }
+}
+
+/// Head/body/payload for a /events frame — shared by the mobile task handler and
+/// the desktop watcher so they stay in sync.
+({String head, String body, String payload}) _notifContent(Instance inst, Map<String, dynamic> e) {
+  final session = e['session']?.toString() ?? '';
+  final title = e['title']?.toString() ?? 'session';
+  final (String head, String body) = switch (e['kind']?.toString()) {
+    'waiting' => ('${inst.label} needs your input', title),
+    'done' => ('${inst.label} finished', title),
+    'error' => ('${inst.label} hit an error', title),
+    'idle' => ('${inst.label} stopped', title),
+    _ => (inst.label, title),
+  };
+  final payload = jsonEncode({'url': inst.url, 'token': inst.token, 'name': inst.label, 'session': session, 'title': title});
+  return (head: head, body: body, payload: payload);
 }
 
 void _route(String payload) {
@@ -79,72 +111,170 @@ void _route(String payload) {
 }
 
 Future<bool> notificationsEnabled() async {
-  if (!kMobile) return false;
+  if (!kCanNotify) return false;
   final sp = await SharedPreferences.getInstance();
   return sp.getBool(_prefEnabled) ?? false;
 }
 
-/// Enable/disable background watching. Returns an error string, or null on success.
+/// Enable/disable session watching. Returns an error string, or null on success.
 Future<String?> setNotificationsEnabled(bool on) async {
-  if (!kMobile) return 'Background watching is mobile-only.';
+  if (!kCanNotify) return 'Notifications are not supported here.';
   final sp = await SharedPreferences.getInstance();
   await sp.setBool(_prefEnabled, on);
   if (!on) {
-    await FlutterForegroundTask.stopService();
+    if (kMobile) {
+      await FlutterForegroundTask.stopService();
+    } else {
+      _watcher?.stop();
+      _watcher = null;
+    }
     return null;
   }
   return startWatching();
 }
 
-/// Start the foreground watcher (idempotent). Returns an error string or null.
+/// Start the watcher (idempotent). Returns an error string or null.
 Future<String?> startWatching() async {
-  if (!kMobile) return 'Background watching is mobile-only.';
-  var perm = await FlutterForegroundTask.checkNotificationPermission();
-  if (perm != NotificationPermission.granted) {
-    perm = await FlutterForegroundTask.requestNotificationPermission();
+  if (kMobile) {
+    var perm = await FlutterForegroundTask.checkNotificationPermission();
     if (perm != NotificationPermission.granted) {
-      return 'Notification permission denied.';
+      perm = await FlutterForegroundTask.requestNotificationPermission();
+      if (perm != NotificationPermission.granted) {
+        return 'Notification permission denied.';
+      }
     }
+    if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+      await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+    }
+    if (await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.restartService();
+    } else {
+      await FlutterForegroundTask.startService(
+        serviceId: 4317,
+        serviceTypes: [ForegroundServiceTypes.dataSync],
+        notificationTitle: 'snippet',
+        notificationText: 'Watching your sessions',
+        callback: startNotificationCallback,
+      );
+    }
+    return null;
   }
-  if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
-    await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+  if (!kDesktopNotify) return 'Notifications are not supported here.';
+  // macOS asks for permission the first time; Linux needs none.
+  final mac = _mainNotif.resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>();
+  if (mac != null) {
+    final ok = await mac.requestPermissions(alert: true, sound: true);
+    if (ok == false) return 'Notification permission denied.';
   }
-  if (await FlutterForegroundTask.isRunningService) {
-    await FlutterForegroundTask.restartService();
-  } else {
-    await FlutterForegroundTask.startService(
-      serviceId: 4317,
-      serviceTypes: [ForegroundServiceTypes.dataSync],
-      notificationTitle: 'snippet',
-      notificationText: 'Watching your sessions',
-      callback: startNotificationCallback,
-    );
-  }
+  _watcher ??= _DesktopWatcher();
+  await _watcher!.start();
   return null;
 }
 
 /// Resume the watcher on app launch if the user had it enabled.
 Future<void> resumeWatchingIfEnabled() async {
-  if (!kMobile) return;
+  if (!kCanNotify) return;
   if (await notificationsEnabled()) {
     await startWatching();
   }
 }
 
-// Tell the task whether the app is foreground and which session is open, so it
+// Tell the watcher whether the app is foreground and which session is open, so it
 // can suppress a notification the user is already looking at.
 void reportForeground(bool fg) {
-  if (!kMobile) return;
-  try {
-    FlutterForegroundTask.sendDataToTask({'fg': fg});
-  } catch (_) {}
+  if (kMobile) {
+    try {
+      FlutterForegroundTask.sendDataToTask({'fg': fg});
+    } catch (_) {}
+    return;
+  }
+  _watcher?.setForeground(fg);
 }
 
 void reportOpenSession(String? key) {
-  if (!kMobile) return;
-  try {
-    FlutterForegroundTask.sendDataToTask({'open': key ?? ''});
-  } catch (_) {}
+  if (kMobile) {
+    try {
+      FlutterForegroundTask.sendDataToTask({'open': key ?? ''});
+    } catch (_) {}
+    return;
+  }
+  _watcher?.setOpen(key ?? '');
+}
+
+// ---------------------------------------------------------------------------
+// Desktop (macOS/Linux): in-process /events watcher — one WS per instance,
+// raising native local notifications. No background service; the app is running.
+// ---------------------------------------------------------------------------
+_DesktopWatcher? _watcher;
+
+class _DesktopWatcher {
+  final Map<String, WebSocketChannel> _channels = {};
+  List<Instance> _instances = const [];
+  bool _fg = true;
+  String _open = '';
+  int _nid = 5000;
+  Timer? _reconnect;
+  bool _running = false;
+
+  Future<void> start() async {
+    _running = true;
+    _instances = await InstanceStore().load();
+    _connectAll();
+    _reconnect ??= Timer.periodic(const Duration(seconds: 20), (_) {
+      if (_running) _connectAll();
+    });
+  }
+
+  void stop() {
+    _running = false;
+    _reconnect?.cancel();
+    _reconnect = null;
+    for (final c in _channels.values) {
+      c.sink.close();
+    }
+    _channels.clear();
+  }
+
+  void setForeground(bool fg) => _fg = fg;
+  void setOpen(String key) => _open = key;
+
+  void _connectAll() {
+    for (final inst in _instances) {
+      if (_channels.containsKey(inst.url)) continue;
+      try {
+        final ch = WebSocketChannel.connect(eventsUri(inst.url, inst.token));
+        _channels[inst.url] = ch;
+        ch.stream.listen(
+          (msg) => _onEvent(inst, msg),
+          onDone: () => _channels.remove(inst.url),
+          onError: (_) => _channels.remove(inst.url),
+          cancelOnError: true,
+        );
+      } catch (_) {}
+    }
+  }
+
+  void _onEvent(Instance inst, dynamic msg) {
+    Map<String, dynamic> e;
+    try {
+      e = jsonDecode(msg as String) as Map<String, dynamic>;
+    } catch (_) {
+      return;
+    }
+    final session = e['session']?.toString() ?? '';
+    if (_fg && '${inst.url}|$session' == _open) return; // already on screen
+    final c = _notifContent(inst, e);
+    _mainNotif.show(
+      id: _nid++,
+      title: c.head,
+      body: c.body,
+      notificationDetails: const NotificationDetails(
+        macOS: DarwinNotificationDetails(),
+        linux: LinuxNotificationDetails(),
+      ),
+      payload: c.payload,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
