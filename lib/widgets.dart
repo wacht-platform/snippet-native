@@ -184,8 +184,8 @@ class Btn extends StatelessWidget {
       BtnVariant.ghost => (Colors.transparent, AppColors.fg2, null),
       BtnVariant.danger => (AppColors.dangerBg, AppColors.danger, AppColors.danger.withValues(alpha: 0.3)),
     };
-    // Shorter on desktop (mouse), roomy touch targets on mobile.
-    final h = small ? (kMobile ? 34.0 : 30.0) : (kMobile ? 44.0 : 36.0);
+    // Compact on desktop (mouse), roomy touch targets on mobile.
+    final h = small ? (kMobile ? 34.0 : 28.0) : (kMobile ? 44.0 : 34.0);
     final child = Row(
       mainAxisSize: full ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -611,14 +611,14 @@ class _AppFieldState extends State<AppField> {
       ],
       AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        constraints: const BoxConstraints(minHeight: 44),
+        padding: const EdgeInsets.symmetric(horizontal: 11),
+        constraints: BoxConstraints(minHeight: kMobile ? 44 : 34),
         decoration: BoxDecoration(
           color: AppColors.surface2,
           borderRadius: BorderRadius.circular(R.md),
           border: Border.all(color: focused ? AppColors.accent : AppColors.border),
           boxShadow: focused
-              ? [BoxShadow(color: AppColors.accentRing, blurRadius: 0, spreadRadius: 3)]
+              ? [BoxShadow(color: AppColors.accentRing, blurRadius: 0, spreadRadius: 2)]
               : null,
         ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
@@ -638,7 +638,7 @@ class _AppFieldState extends State<AppField> {
               style: widget.mono ? mono(13, color: AppColors.fg1) : sans(13, color: AppColors.fg1),
               decoration: InputDecoration(
                 isCollapsed: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                contentPadding: EdgeInsets.symmetric(vertical: kMobile ? 12 : 8),
                 border: InputBorder.none,
                 hintText: widget.hint,
                 hintStyle: widget.mono ? mono(13, color: AppColors.fg4) : sans(13, color: AppColors.fg4),

@@ -249,12 +249,28 @@ class _AddInstanceFieldState extends State<_AddInstanceField> {
       return Btn('Add instance', icon: 'plus', small: widget.dense, full: true, onTap: () => setState(() => _open = true));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      AppField(
+        controller: _ctrl,
+        mono: true,
+        autofocus: true,
+        hint: 'Paste connection string…',
+        onSubmitted: (_) => _connect(),
+        rightSlot: _busy
+            ? const Padding(padding: EdgeInsets.only(left: 6), child: SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)))
+            : IconBtn('arrow-right', size: 26, iconSize: 16, tooltip: 'Connect', onTap: _connect),
+      ),
+      const SizedBox(height: 6),
       Row(children: [
-        Expanded(child: AppField(controller: _ctrl, mono: true, autofocus: true, hint: 'https://host/?token=…', onSubmitted: (_) => _connect())),
-        const SizedBox(width: 8),
-        Btn(_busy ? '…' : 'Connect', small: true, disabled: _busy, onTap: _connect),
+        if (_error != null) Expanded(child: Text(_error!, style: sans(11, color: AppColors.danger))) else const Spacer(),
+        GestureDetector(
+          onTap: () => setState(() {
+            _open = false;
+            _error = null;
+            _ctrl.clear();
+          }),
+          child: Text('Cancel', style: sans(11.5, color: AppColors.fg3)),
+        ),
       ]),
-      if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: sans(11.5, color: AppColors.danger))),
     ]);
   }
 }
