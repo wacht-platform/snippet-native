@@ -690,6 +690,8 @@ Future<T?> showAppSheet<T>(BuildContext context, {required String title, require
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
+    // Centered, width-capped on desktop (phones are narrower than this → unchanged).
+    constraints: const BoxConstraints(maxWidth: 560),
     builder: (_) => Container(
       decoration: const BoxDecoration(
         color: AppColors.surface1,
