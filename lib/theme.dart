@@ -4,49 +4,49 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 /// snippet — Wacht design system (dark), one electric-blue accent.
 /// Resolved dark-theme tokens from the design handoff.
-// Mono — neutral black-and-white; the accent is white (no color, no slate tint).
+// shadcn dark (zinc + indigo). OKLCH tokens converted to sRGB.
 class AppColors {
-  static const bg = Color(0xFF0A0A0A); // app background (neutral near-black)
-  static const surface1 = Color(0xFF151515); // cards, sheets, agent bubbles
-  static const surface2 = Color(0xFF1E1E1E); // inputs, chips, status strip
-  static const surface3 = Color(0xFF2A2A2A); // pressed / hover raise
+  static const bg = Color(0xFF09090B); // --background
+  static const surface1 = Color(0xFF18181B); // --card / --popover / --sidebar
+  static const surface2 = Color(0xFF27272A); // --secondary / --muted (inputs, chips)
+  static const surface3 = Color(0xFF37373B); // pressed / hover raise
 
-  static const fg1 = Color(0xFFFAFAFA); // primary text
-  static const fg2 = Color(0xFFB5B5B5); // secondary text, icons
-  static const fg3 = Color(0xFF8A8A8A); // muted / metadata / paths
-  static const fg4 = Color(0xFF5A5A5A); // faint icons, disabled
+  static const fg1 = Color(0xFFFAFAFA); // --foreground
+  static const fg2 = Color(0xFFCACAD1); // secondary text, icons
+  static const fg3 = Color(0xFF9F9FA9); // --muted-foreground
+  static const fg4 = Color(0xFF797981); // faint icons, disabled
 
-  static const border = Color(0x14FFFFFF); // hairline ~8%
-  static const border2 = Color(0x26FFFFFF); // hover/emphasis ~15%
+  static const border = Color(0x1AFFFFFF); // --border (white 10%)
+  static const border2 = Color(0x26FFFFFF); // --input (white 15%)
 
-  // Accent is white: fills are white with black text; tints are faint white.
-  static const accent = Color(0xFFFAFAFA);
-  static const accentHover = Color(0xFFFFFFFF);
-  static const accentFg = Color(0xFF0A0A0A);
-  static const accentBg = Color(0x1FFFFFFF); // ~12%
-  static const accentLine = Color(0x40FFFFFF); // ~25%
-  static const accentRing = Color(0x33FFFFFF); // ~20%
+  // Indigo accent (bright for a dark UI): fills carry dark text.
+  static const accent = Color(0xFF8D98FF);
+  static const accentHover = Color(0xFFA6ADFF);
+  static const accentFg = Color(0xFF0C0A1F);
+  static const accentBg = Color(0x288D98FF); // ~16%
+  static const accentLine = Color(0x668D98FF); // 40%
+  static const accentRing = Color(0x4D8D98FF); // 30%
 
-  // Status: monochrome (no green); red kept only for errors.
-  static const ok = Color(0xFFE0E0E0);
-  static const okBg = Color(0x1FFFFFFF);
-  static const run = Color(0xFFFAFAFA);
-  static const runBg = Color(0x1FFFFFFF);
-  static const danger = Color(0xFFF06560);
-  static const dangerBg = Color(0x26F06560);
+  // Status (on-theme: indigo, no green); red for errors.
+  static const ok = Color(0xFF8D98FF);
+  static const okBg = Color(0x288D98FF);
+  static const run = Color(0xFFA6ADFF);
+  static const runBg = Color(0x26A6ADFF);
+  static const danger = Color(0xFFFF6467); // --destructive
+  static const dangerBg = Color(0x26FF6467);
 
-  // diff line tints — additions neutral (no green), deletions red.
-  static const diffAddBg = Color(0x18FFFFFF);
-  static const diffDelBg = Color(0x1FF06560);
-  static const diffAddFg = Color(0xFFE6E6E6);
-  static const diffDelFg = Color(0xFFF3A6A2);
-  static const diffGutter = Color(0xFF4A4A4A);
+  // diff line tints — additions indigo (no green), deletions red.
+  static const diffAddBg = Color(0x208D98FF);
+  static const diffDelBg = Color(0x20FF6467);
+  static const diffAddFg = Color(0xFF8D98FF);
+  static const diffDelFg = Color(0xFFFF9492);
+  static const diffGutter = Color(0xFF52525B);
 }
 
-// Sharp / minimal — small radii throughout.
+// --radius 0.45rem ≈ 7px.
 class R {
-  static const card = 6.0;
-  static const md = 6.0; // buttons, inputs, icon buttons
+  static const card = 8.0;
+  static const md = 7.0; // buttons, inputs, icon buttons
   static const sm = 5.0; // menu items, list rows
   static const xs = 4.0; // inner chips
   static const sheetTop = 14.0;
