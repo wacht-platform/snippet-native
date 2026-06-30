@@ -11,6 +11,7 @@ import '../platform.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'files.dart';
 import 'folder_browser.dart';
 import 'models.dart';
 import 'session.dart';
@@ -523,6 +524,13 @@ class _SidebarState extends State<_Sidebar> {
     return '${(d.inDays / 30).floor()}mo';
   }
 
+  // Browse files (and run git) on any folder without opening a chat.
+  void _openFiles() {
+    final c = widget.client;
+    if (c == null) return;
+    presentScreen(context, builder: (_, close) => FileExplorer(client: c, title: widget.active?.label ?? 'Files', onClose: close));
+  }
+
   void _openSearch() {
     showCommandPalette(
       context,
@@ -557,6 +565,7 @@ class _SidebarState extends State<_Sidebar> {
         SizedBox(height: kMacOS ? kMacTitlebar + 6 : 6), // clear the window controls
         _navRow('edit', 'New chat', onTap: hasClient ? widget.onNewSession : null),
         _navRow('search', 'Search', onTap: hasClient ? _openSearch : null),
+        _navRow('folder', 'Files', onTap: hasClient ? _openFiles : null),
         const SizedBox(height: 4),
         Expanded(
           child: !hasClient
