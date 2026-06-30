@@ -374,10 +374,14 @@ class _DiffViewState extends State<_DiffView> {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(
-        child: SelectionArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: lines.map(_diffLine).toList(),
+        // IntrinsicWidth bounds the horizontal scroll to the widest line so each
+        // line's `width: double.infinity` background resolves (no infinite-width crash).
+        child: IntrinsicWidth(
+          child: SelectionArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: lines.map(_diffLine).toList(),
+            ),
           ),
         ),
       ),

@@ -207,6 +207,12 @@ class DaemonClient {
     if (r.statusCode != 200) throw _err('create folder', r);
   }
 
+  /// Delete a file or directory (directories are removed recursively).
+  Future<void> deletePath(String path) async {
+    final r = await http.post(_uri('/fs/delete'), headers: _json, body: jsonEncode({'path': path}));
+    if (r.statusCode != 200) throw _err('delete', r);
+  }
+
   // ---- git (server-side, scoped to a session's workspace) ----
 
   Future<Map<String, dynamic>> _gitPost(String op, Map<String, dynamic> body) async {

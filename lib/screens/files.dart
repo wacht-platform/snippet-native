@@ -26,6 +26,8 @@ class FileExplorer extends StatefulWidget {
 
 class _FileExplorerState extends State<FileExplorer> {
   late Future<FsListing> _future;
+  bool _selecting = false;
+  final Set<String> _selected = {};
 
   @override
   void initState() {
@@ -33,7 +35,56 @@ class _FileExplorerState extends State<FileExplorer> {
     _future = widget.client.fs(widget.start);
   }
 
-  void _go(String? path) => setState(() { _future = widget.client.fs(path); });
+  void _go(String? path) => setState(() {
+        _future = widget.client.fs(path);
+        _selecting = false;
+        _selected.clear();
+      });
+
+  void _toggle(FsEntry e) => setState(() {
+        if (!_selected.remove(e.path)) _selected.add(e.path);
+        if (_selected.isEmpty) _selecting = false;
+      });
+
+  void _enterSelect(FsEntry e) => setState(() {
+        _selecting = true;
+        _selected.add(e.path);
+      });
+
+  void _exitSelect() => setState(() {
+        _selecting = false;
+        _selected.clear();
+      });
+
+  Future<void> _deleteSelected(String cwd) async {
+    final n = _selected.length;
+    if (n == 0) return;
+    final ok = await showAppSheet<bool>(context, title: 'Delete $n item${n == 1 ? '' : 's'}?', child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Permanently deletes the selected item${n == 1 ? '' : 's'} from the machine. Folders are removed with their contents.', style: sans(12, height: 1.45, color: AppColors.fg3)),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: Btn('Cancel', variant: BtnVariant.secondary, onTap: () => Navigator.pop(context, false))),
+          const SizedBox(width: 10),
+          Expanded(child: Btn('Delete', variant: BtnVariant.danger, icon: 'trash', onTap: () => Navigator.pop(context, true))),
+        ]),
+      ],
+    ));
+    if (ok != true) return;
+    var failed = 0;
+    for (final p in _selected.toList()) {
+      try {
+        await widget.client.deletePath(p);
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (!mounted) return;
+    if (failed > 0) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete $failed item(s)')));
+    _go(cwd); // refresh + clears selection
+  }
 
   Future<void> _newFolder(String cwd) async {
     final name = await promptText(context, title: 'New folder', hint: 'Folder name', saveLabel: 'Create');
@@ -71,9 +122,9 @@ class _FileExplorerState extends State<FileExplorer> {
     if (uploaded > 0) _go(cwd);
   }
 
-  void _openFile(FsEntry e) => Navigator.push(
+  void _openFile(FsEntry e) => presentScreen(
         context,
-        MaterialPageRoute(builder: (_) => FileViewer(client: widget.client, path: e.path, name: e.name)),
+        builder: (_, close) => FileViewer(client: widget.client, path: e.path, name: e.name, onClose: close),
       );
 
   @override
@@ -87,10 +138,20 @@ class _FileExplorerState extends State<FileExplorer> {
             final listing = snap.data;
             final segs = (listing?.path ?? '').split('/').where((s) => s.isNotEmpty).toList();
             return Column(children: [
-              SnAppBar(title: widget.title, subtitle: listing?.path, onBack: widget.onClose ?? () => Navigator.pop(context), actions: [
-                if (listing != null) IconBtn('upload', tooltip: 'Upload files', onTap: () => _upload(listing.path)),
-                if (listing != null) IconBtn('folder-plus', tooltip: 'New folder', onTap: () => _newFolder(listing.path)),
-              ]),
+              SnAppBar(
+                title: _selecting ? '${_selected.length} selected' : widget.title,
+                subtitle: _selecting ? null : listing?.path,
+                onBack: _selecting ? _exitSelect : (widget.onClose ?? () => Navigator.pop(context)),
+                actions: _selecting
+                    ? [
+                        IconBtn('trash', tooltip: 'Delete', onTap: (listing == null || _selected.isEmpty) ? null : () => _deleteSelected(listing.path)),
+                        IconBtn('x', tooltip: 'Cancel', onTap: _exitSelect),
+                      ]
+                    : [
+                        if (listing != null) IconBtn('upload', tooltip: 'Upload files', onTap: () => _upload(listing.path)),
+                        if (listing != null) IconBtn('folder-plus', tooltip: 'New folder', onTap: () => _newFolder(listing.path)),
+                      ],
+              ),
               if (segs.isNotEmpty)
                 Container(
                   height: 40,
@@ -115,14 +176,17 @@ class _FileExplorerState extends State<FileExplorer> {
                         : ListView(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             children: [
-                              if (listing!.parent != null)
+                              if (listing!.parent != null && !_selecting)
                                 _Row(icon: 'folder-open', name: '..', muted: true, onTap: () => _go(listing.parent)),
                               ...listing.entries.map((e) => _Row(
                                     icon: e.isDir ? 'folder' : 'file',
                                     name: e.name,
                                     git: e.git,
-                                    chevron: e.isDir,
-                                    onTap: e.isDir ? () => _go(e.path) : () => _openFile(e),
+                                    chevron: e.isDir && !_selecting,
+                                    selecting: _selecting,
+                                    selected: _selected.contains(e.path),
+                                    onTap: _selecting ? () => _toggle(e) : (e.isDir ? () => _go(e.path) : () => _openFile(e)),
+                                    onLongPress: () => _selecting ? _toggle(e) : _enterSelect(e),
                                   )),
                             ],
                           ),
@@ -137,21 +201,33 @@ class _FileExplorerState extends State<FileExplorer> {
 
 class _Row extends StatelessWidget {
   final String icon, name;
-  final bool git, muted, chevron;
-  final VoidCallback? onTap;
-  const _Row({required this.icon, required this.name, this.git = false, this.muted = false, this.chevron = false, this.onTap});
+  final bool git, muted, chevron, selecting, selected;
+  final VoidCallback? onTap, onLongPress;
+  const _Row({
+    required this.icon,
+    required this.name,
+    this.git = false,
+    this.muted = false,
+    this.chevron = false,
+    this.selecting = false,
+    this.selected = false,
+    this.onTap,
+    this.onLongPress,
+  });
   @override
   Widget build(BuildContext context) {
     final isFile = icon == 'file';
     return Material(
-      color: Colors.transparent,
+      color: selected ? AppColors.accentBg : Colors.transparent,
       borderRadius: BorderRadius.circular(R.sm),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(R.sm),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           child: Row(children: [
+            if (selecting) ...[_checkbox(selected), const SizedBox(width: 11)],
             AppIcon(icon, size: 18, color: isFile ? AppColors.fg3 : AppColors.accent),
             const SizedBox(width: 11),
             Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(13, color: muted ? AppColors.fg3 : AppColors.fg1))),
@@ -167,6 +243,18 @@ class _Row extends StatelessWidget {
       ),
     );
   }
+
+  Widget _checkbox(bool on) => Container(
+        width: 18,
+        height: 18,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: on ? AppColors.accent : Colors.transparent,
+          border: Border.all(color: on ? AppColors.accent : AppColors.border2, width: 1.5),
+        ),
+        child: on ? const Icon(Icons.check_rounded, size: 12, color: AppColors.accentFg) : null,
+      );
 }
 
 /// Read-only viewer for one file.
@@ -174,7 +262,8 @@ class FileViewer extends StatefulWidget {
   final DaemonClient client;
   final String path;
   final String name;
-  const FileViewer({super.key, required this.client, required this.path, required this.name});
+  final VoidCallback? onClose;
+  const FileViewer({super.key, required this.client, required this.path, required this.name, this.onClose});
   @override
   State<FileViewer> createState() => _FileViewerState();
 }
@@ -231,7 +320,7 @@ class _FileViewerState extends State<FileViewer> {
       body: SafeArea(
         bottom: false,
         child: Column(children: [
-          SnAppBar(title: widget.name, subtitle: widget.path, onBack: () => Navigator.pop(context), actions: [
+          SnAppBar(title: widget.name, subtitle: widget.path, onBack: widget.onClose ?? () => Navigator.pop(context), actions: [
             IconBtn('edit', tooltip: 'Edit', onTap: () => presentScreen(context,
               style: PanelStyle.dialog,
               dismissible: false,
