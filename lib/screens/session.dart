@@ -963,35 +963,21 @@ class _QueuedBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: Container(
-          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
-          padding: const EdgeInsets.fromLTRB(13, 9, 7, 9),
-          decoration: BoxDecoration(
-            color: AppColors.surface2,
-            border: Border.all(color: AppColors.border2, style: BorderStyle.solid),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-              bottomRight: Radius.circular(5),
-              bottomLeft: Radius.circular(16),
-            ),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Padding(padding: EdgeInsets.only(top: 2, right: 7), child: AppIcon('history', size: 12, color: AppColors.fg3)),
-            Flexible(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text('Queued', style: sans(10, weight: FontWeight.w500, color: AppColors.fg3)),
-                const SizedBox(height: 2),
-                Text(text, style: sans(13.5, height: 1.4, color: AppColors.fg2)),
-              ]),
-            ),
-            IconBtn('x', size: 28, iconSize: 15, tooltip: 'Cancel', onTap: onCancel),
-          ]),
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 5, height: 5, decoration: const BoxDecoration(color: AppColors.fg4, shape: BoxShape.circle)),
+          const SizedBox(width: 7),
+          Text('QUEUED', style: sans(10, color: AppColors.fg4, spacing: 0.8)),
+          const Spacer(),
+          IconBtn('x', size: 26, iconSize: 14, tooltip: 'Cancel', onTap: onCancel),
+        ]),
+        const SizedBox(height: 3),
+        Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: Text(text, style: sans(13.5, height: 1.5, color: AppColors.fg3)),
         ),
-      ),
+      ]),
     );
   }
 }

@@ -74,6 +74,20 @@ class _DesktopShellState extends State<DesktopShell> {
     _selectInstance(inst);
   }
 
+  Future<void> _removeInstance(Instance inst) async {
+    final items = [..._instances]..removeWhere((e) => e.url == inst.url);
+    await _store.save(items);
+    if (!mounted) return;
+    setState(() {
+      _instances = items;
+      if (_active?.url == inst.url) {
+        _active = items.isNotEmpty ? items.first : null;
+        _client = _active != null ? DaemonClient(_active!.url, _active!.token) : null;
+        _sessionId = null;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -92,6 +106,7 @@ class _DesktopShellState extends State<DesktopShell> {
                     onSelectInstance: _selectInstance,
                     onOpenSession: _openSession,
                     onInstanceAdded: _onInstanceAdded,
+                    onRemoveInstance: _removeInstance,
                   ),
                 ),
                 const VerticalDivider(width: 1, thickness: 1, color: AppColors.border),
@@ -252,6 +267,7 @@ class _Sidebar extends StatefulWidget {
   final void Function(Instance) onSelectInstance;
   final void Function(String id, String title, String? profile) onOpenSession;
   final void Function(Instance) onInstanceAdded;
+  final void Function(Instance) onRemoveInstance;
   const _Sidebar({
     required this.instances,
     required this.active,
@@ -260,6 +276,7 @@ class _Sidebar extends StatefulWidget {
     required this.onSelectInstance,
     required this.onOpenSession,
     required this.onInstanceAdded,
+    required this.onRemoveInstance,
   });
   @override
   State<_Sidebar> createState() => _SidebarState();
@@ -333,7 +350,13 @@ class _SidebarState extends State<_Sidebar> {
   void _openSettings() {
     final c = widget.client;
     if (c == null) return;
-    presentScreen(context, builder: (_, close) => _SettingsPanel(client: c, onClose: close));
+    presentScreen(context, builder: (_, close) => _SettingsPanel(
+      client: c,
+      instances: widget.instances,
+      active: widget.active,
+      onRemove: widget.onRemoveInstance,
+      onClose: close,
+    ));
   }
 
   String _pill(String s) => switch (s) {
@@ -402,7 +425,10 @@ class _SidebarState extends State<_Sidebar> {
     final active = widget.active;
     return PopupMenuButton<String>(
       color: AppColors.surface2,
-      offset: const Offset(0, 48),
+      offset: const Offset(0, 44),
+      elevation: 8,
+      constraints: const BoxConstraints(minWidth: 224, maxWidth: 280),
+      menuPadding: const EdgeInsets.symmetric(vertical: 4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.md), side: const BorderSide(color: AppColors.border2)),
       onSelected: (v) {
         if (v == '__add') {
@@ -415,17 +441,24 @@ class _SidebarState extends State<_Sidebar> {
       itemBuilder: (_) => [
         ...widget.instances.map((i) => PopupMenuItem(
               value: i.url,
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(children: [
-                AppIcon(i.url == active?.url ? 'check' : 'cpu', size: 15, color: i.url == active?.url ? AppColors.accent : AppColors.fg3),
-                const SizedBox(width: 10),
-                Expanded(child: Text(i.label, style: sans(13, color: AppColors.fg1))),
+                AppIcon(i.url == active?.url ? 'check' : 'cpu', size: 14, color: i.url == active?.url ? AppColors.accent : AppColors.fg3),
+                const SizedBox(width: 9),
+                Expanded(child: Text(i.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(12.5, color: AppColors.fg1))),
               ]),
             )),
-        const PopupMenuItem(value: '__add', child: Row(children: [
-          AppIcon('plus', size: 15, color: AppColors.accent),
-          SizedBox(width: 10),
-          Text('Add instance'),
-        ])),
+        PopupMenuItem(
+          value: '__add',
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(children: [
+            const AppIcon('plus', size: 14, color: AppColors.accent),
+            const SizedBox(width: 9),
+            Text('Add instance', style: sans(12.5, color: AppColors.accent)),
+          ]),
+        ),
       ],
       child: Container(
         height: 48,
@@ -485,11 +518,47 @@ class _SidebarState extends State<_Sidebar> {
   }
 }
 
-/// Desktop settings drawer. Hosts Models (and room for more later).
-class _SettingsPanel extends StatelessWidget {
+/// Desktop settings drawer: manage saved instances (remove) + Models.
+class _SettingsPanel extends StatefulWidget {
   final DaemonClient client;
+  final List<Instance> instances;
+  final Instance? active;
+  final void Function(Instance) onRemove;
   final VoidCallback onClose;
-  const _SettingsPanel({required this.client, required this.onClose});
+  const _SettingsPanel({
+    required this.client,
+    required this.instances,
+    required this.active,
+    required this.onRemove,
+    required this.onClose,
+  });
+  @override
+  State<_SettingsPanel> createState() => _SettingsPanelState();
+}
+
+class _SettingsPanelState extends State<_SettingsPanel> {
+  late final List<Instance> _instances = [...widget.instances];
+
+  Future<void> _confirmRemove(Instance inst) async {
+    final ok = await showAppSheet<bool>(context, title: 'Remove instance?', child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(inst.label, style: sans(13.5, color: AppColors.fg1)),
+        const SizedBox(height: 6),
+        Text('Removes the saved connection from this app. The machine and its sessions are untouched.', style: sans(12, height: 1.45, color: AppColors.fg3)),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: Btn('Cancel', variant: BtnVariant.secondary, onTap: () => Navigator.pop(context, false))),
+          const SizedBox(width: 10),
+          Expanded(child: Btn('Remove', variant: BtnVariant.danger, icon: 'trash', onTap: () => Navigator.pop(context, true))),
+        ]),
+      ],
+    ));
+    if (ok != true) return;
+    widget.onRemove(inst);
+    setState(() => _instances.removeWhere((e) => e.url == inst.url));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -497,13 +566,19 @@ class _SettingsPanel extends StatelessWidget {
       body: SafeArea(
         bottom: false,
         child: Column(children: [
-          SnAppBar(title: 'Settings', onBack: onClose),
+          SnAppBar(title: 'Settings', onBack: widget.onClose),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               children: [
-                _tile(context, 'cpu', 'Models', 'Providers & active model',
-                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelsScreen(client: client)))),
+                const SectionLabel('Instances'),
+                const SizedBox(height: 6),
+                ..._instances.map(_instanceRow),
+                const SizedBox(height: 16),
+                const SectionLabel('Configuration'),
+                const SizedBox(height: 6),
+                _tile('cpu', 'Models', 'Providers & active model',
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ModelsScreen(client: widget.client)))),
               ],
             ),
           ),
@@ -512,36 +587,56 @@ class _SettingsPanel extends StatelessWidget {
     );
   }
 
-  Widget _tile(BuildContext context, String icon, String label, String sub, VoidCallback onTap) {
+  Widget _instanceRow(Instance i) {
+    final isActive = i.url == widget.active?.url;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Material(
-        color: AppColors.surface2,
-        borderRadius: BorderRadius.circular(R.md),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(R.md),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            child: Row(children: [
-              Container(
-                width: 30,
-                height: 30,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: AppColors.surface3, borderRadius: BorderRadius.circular(R.sm)),
-                child: AppIcon(icon, size: 15, color: AppColors.fg2),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(label, style: sans(13, color: AppColors.fg1)),
-                  const SizedBox(height: 1),
-                  Text(sub, style: sans(11, color: AppColors.fg4)),
-                ]),
-              ),
-              const AppIcon('chevron-right', size: 15, color: AppColors.fg4),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 9, 4, 9),
+        decoration: BoxDecoration(color: AppColors.surface2, borderRadius: BorderRadius.circular(R.md)),
+        child: Row(children: [
+          Container(width: 6, height: 6, decoration: BoxDecoration(color: isActive ? AppColors.accent : AppColors.fg4, shape: BoxShape.circle)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(i.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13, color: AppColors.fg1)),
+              const SizedBox(height: 1),
+              Text(hostOf(i.url), maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(10.5, color: AppColors.fg4)),
             ]),
           ),
+          IconBtn('trash', size: 32, iconSize: 16, tooltip: 'Remove', onTap: () => _confirmRemove(i)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _tile(String icon, String label, String sub, VoidCallback onTap) {
+    return Material(
+      color: AppColors.surface2,
+      borderRadius: BorderRadius.circular(R.md),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(R.md),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          child: Row(children: [
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: AppColors.surface3, borderRadius: BorderRadius.circular(R.sm)),
+              child: AppIcon(icon, size: 15, color: AppColors.fg2),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(label, style: sans(13, color: AppColors.fg1)),
+                const SizedBox(height: 1),
+                Text(sub, style: sans(11, color: AppColors.fg4)),
+              ]),
+            ),
+            const AppIcon('chevron-right', size: 15, color: AppColors.fg4),
+          ]),
         ),
       ),
     );

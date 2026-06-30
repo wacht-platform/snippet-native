@@ -302,30 +302,26 @@ class _DashedBorder extends CustomPainter {
   bool shouldRepaint(covariant _DashedBorder old) => old.color != color;
 }
 
-/// Chat bubble.
+/// One chat message — flat (no bubble/box): a small role label with a colored
+/// dot, then the content. Role is conveyed by the label + dot, not a container.
 class Bubble extends StatelessWidget {
   final bool mine;
   final String text;
   const Bubble({super.key, required this.mine, required this.text});
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-        decoration: BoxDecoration(
-          color: mine ? AppColors.accentBg : AppColors.surface1,
-          border: Border.all(color: mine ? AppColors.accentLine : AppColors.border),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomRight: Radius.circular(mine ? 5 : 16),
-            bottomLeft: Radius.circular(mine ? 16 : 5),
-          ),
-        ),
-        // Agent text: wrap in a SelectionArea so a drag selects across all markdown
-        // blocks at once (per-block `selectable: true` can't span paragraphs/lines).
+    final roleColor = mine ? AppColors.accent : AppColors.fg2;
+    final role = mine ? 'You' : 'snippet';
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Container(width: 5, height: 5, decoration: BoxDecoration(color: roleColor, shape: BoxShape.circle)),
+        const SizedBox(width: 7),
+        Text(role.toUpperCase(), style: sans(10, color: roleColor, spacing: 0.8)),
+      ]),
+      const SizedBox(height: 5),
+      Padding(
+        padding: const EdgeInsets.only(left: 12),
+        // Agent text: SelectionArea so a drag selects across all markdown blocks.
         child: mine
             ? SelectableText(text, style: sans(13.5, height: 1.5, color: AppColors.fg1))
             : SelectionArea(
@@ -337,7 +333,7 @@ class Bubble extends StatelessWidget {
                 ),
               ),
       ),
-    );
+    ]);
   }
 }
 
