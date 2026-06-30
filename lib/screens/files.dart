@@ -2,7 +2,9 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:re_editor/re_editor.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../api.dart';
 import '../highlight.dart';
@@ -302,24 +304,31 @@ class _FileViewerState extends State<FileViewer> {
     try {
       final bytes = await widget.client.downloadFile(widget.path);
       // Keep the original extension so the OS recognizes the file type (e.g. .docx,
-      // not a generic binary). The save panel can otherwise drop it.
+      // not a generic binary).
       final dot = widget.name.lastIndexOf('.');
       final ext = dot > 0 ? widget.name.substring(dot + 1).toLowerCase() : '';
-      // Mobile: saveFile writes the bytes directly. Desktop: bytes aren't
-      // supported — it returns the chosen path and we write the file ourselves.
-      // (Don't pass FileType.custom — it breaks the save panel on desktop.)
-      final saved = await FilePicker.platform.saveFile(
-        fileName: widget.name,
-        bytes: kMobile ? bytes : null,
-      );
-      if (saved != null && !kMobile) {
-        // The panel can return a path missing the extension — re-append it.
-        final out = (ext.isNotEmpty && !saved.toLowerCase().endsWith('.$ext')) ? '$saved.$ext' : saved;
-        await File(out).writeAsBytes(bytes);
+      String? message;
+      if (kMobile) {
+        // Android/iOS: the system document picker doesn't reliably keep the
+        // extension. Write the bytes to a temp file with the real name and hand
+        // it to the share/save sheet, which preserves the filename.
+        final tmp = File('${(await getTemporaryDirectory()).path}/${widget.name}');
+        await tmp.writeAsBytes(bytes);
+        final res = await Share.shareXFiles([XFile(tmp.path, name: widget.name)]);
+        message = res.status == ShareResultStatus.success ? 'Saved ${widget.name}' : null;
+      } else {
+        // Desktop: the save panel returns a path (no write); write the bytes
+        // ourselves and re-append the extension if the panel dropped it.
+        final saved = await FilePicker.platform.saveFile(fileName: widget.name);
+        if (saved != null) {
+          final out = (ext.isNotEmpty && !saved.toLowerCase().endsWith('.$ext')) ? '$saved.$ext' : saved;
+          await File(out).writeAsBytes(bytes);
+          message = 'Downloaded ${widget.name}';
+        }
       }
       if (!mounted) return;
       setState(() => _downloading = false);
-      if (saved != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Downloaded ${widget.name}')));
+      if (message != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!mounted) return;
       setState(() => _downloading = false);
