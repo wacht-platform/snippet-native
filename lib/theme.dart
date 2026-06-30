@@ -70,16 +70,20 @@ TextStyle sans(double size,
       color: color,
     );
 
+// Code / mono font — JetBrains Mono (a dedicated coding typeface).
 TextStyle mono(double size,
         {FontWeight weight = FontWeight.w400,
         double? height,
         Color color = AppColors.fg1}) =>
-    GoogleFonts.geistMono(
+    GoogleFonts.jetBrainsMono(
       fontSize: size,
       fontWeight: _cap(weight),
       height: height,
       color: color,
     );
+
+/// The code font family name (for widgets that need a raw family, e.g. re_editor).
+String get monoFamily => GoogleFonts.jetBrainsMono().fontFamily ?? 'monospace';
 
 ThemeData buildAppTheme() {
   final base = ThemeData(

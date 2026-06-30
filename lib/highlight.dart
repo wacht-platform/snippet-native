@@ -1,17 +1,16 @@
-import 'package:google_fonts/google_fonts.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:re_highlight/languages/all.dart';
 import 'package:re_highlight/styles/atom-one-dark.dart';
 
 import 'theme.dart';
 
-/// Shared CodeEditor style — Geist Mono (matches the app's `mono` typography),
+/// Shared CodeEditor style — the app's code font (matches `mono` typography),
 /// app colors, and syntax highlighting by file extension. Used by both the
 /// editor and the read-only file viewer so they look identical.
 CodeEditorStyle codeEditorStyle(String filename) => CodeEditorStyle(
       fontSize: 13,
       fontHeight: 1.5,
-      fontFamily: GoogleFonts.geistMono().fontFamily,
+      fontFamily: monoFamily,
       fontFamilyFallback: const ['Menlo', 'Consolas', 'monospace'],
       textColor: AppColors.fg1,
       backgroundColor: AppColors.bg,

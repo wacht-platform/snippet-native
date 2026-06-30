@@ -571,38 +571,43 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     final hasText = _input.text.trim().isNotEmpty;
     final canSend = (hasText || _pendingImagePath != null) && !_uploading;
     return Container(
-      padding: EdgeInsets.fromLTRB(12, 10, 12, 12 + MediaQuery.of(context).padding.bottom),
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
+      padding: EdgeInsets.fromLTRB(12, 4, 12, 8 + MediaQuery.of(context).padding.bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (_localImagePath != null) _imageChip(),
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          _SquareBtn(icon: 'image', bg: AppColors.surface2, fg: _uploading ? AppColors.fg4 : AppColors.fg2, onTap: _uploading ? null : _attachImage),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(color: AppColors.surface2, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(18)),
-              padding: const EdgeInsets.fromLTRB(14, 2, 6, 2),
-              child: TextField(
-                controller: _input,
-                minLines: 1,
-                maxLines: 5,
-                cursorColor: AppColors.accent,
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => _sendMessage(),
-                style: sans(13.5, height: 1.45, color: AppColors.fg1),
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 11),
-                  border: InputBorder.none,
-                  hintText: 'Message snippet…',
-                  hintStyle: sans(13.5, color: AppColors.fg4),
+        // One compact field with + (attach) and send inline; no top separator.
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface2,
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(R.md + 3),
+          ),
+          padding: const EdgeInsets.all(4),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            IconBtn('plus', size: 30, iconSize: 18, tooltip: 'Attach image', onTap: _uploading ? null : _attachImage),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: TextField(
+                  controller: _input,
+                  minLines: 1,
+                  maxLines: 6,
+                  cursorColor: AppColors.accent,
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _sendMessage(),
+                  style: sans(13.5, height: 1.4, color: AppColors.fg1),
+                  decoration: InputDecoration(
+                    isCollapsed: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                    border: InputBorder.none,
+                    hintText: 'Message snippet…',
+                    hintStyle: sans(13.5, color: AppColors.fg4),
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          _SquareBtn(icon: 'send', bg: canSend ? AppColors.accent : AppColors.surface2, fg: canSend ? AppColors.accentFg : AppColors.fg4, onTap: canSend ? _sendMessage : null),
-        ]),
+            _SendBtn(enabled: canSend, onTap: canSend ? _sendMessage : null),
+          ]),
+        ),
       ]),
     );
   }
@@ -1303,24 +1308,23 @@ class _QuestionBarState extends State<_QuestionBar> {
   }
 }
 
-class _SquareBtn extends StatelessWidget {
-  final String icon;
-  final Color bg, fg;
+/// Inline circular send button for the composer.
+class _SendBtn extends StatelessWidget {
+  final bool enabled;
   final VoidCallback? onTap;
-  const _SquareBtn({required this.icon, required this.bg, required this.fg, this.onTap});
+  const _SendBtn({required this.enabled, this.onTap});
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: bg,
-      borderRadius: BorderRadius.circular(14),
+      color: enabled ? AppColors.accent : AppColors.surface3,
+      shape: const CircleBorder(),
       child: InkWell(
+        customBorder: const CircleBorder(),
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14)),
-          child: Icon(iconFor(icon), size: icon == 'send' ? 18 : 16, color: fg),
+        child: SizedBox(
+          width: 30,
+          height: 30,
+          child: Center(child: AppIcon('send', size: 16, color: enabled ? AppColors.accentFg : AppColors.fg4)),
         ),
       ),
     );
