@@ -331,18 +331,19 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       body: SafeArea(
         bottom: false,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SnAppBar(
-            title: _title.isEmpty ? 'session' : _title,
-            subtitle: s != null && s.workspace.isNotEmpty ? s.workspace : null,
-            onBack: widget.embedded ? null : () => Navigator.pop(context),
-            leading: widget.onMenu != null ? IconBtn('sidebar', tooltip: 'Sidebar', onTap: widget.onMenu) : null,
-            actions: [
-              if (!widget.embedded)
+          if (widget.embedded)
+            _desktopBar(s, running)
+          else
+            SnAppBar(
+              title: _title.isEmpty ? 'session' : _title,
+              subtitle: s != null && s.workspace.isNotEmpty ? s.workspace : null,
+              onBack: () => Navigator.pop(context),
+              actions: [
                 IconBtn('home', tooltip: 'Instances', onTap: () => Navigator.popUntil(context, (r) => r.isFirst)),
-              if (running) IconBtn('stop', tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
-              _menu(s),
-            ],
-          ),
+                if (running) IconBtn('stop', tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
+                _menu(s),
+              ],
+            ),
           _statusStrip(s, running),
           if (_connError != null) _disconnectedBanner(),
           Expanded(
@@ -387,6 +388,38 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     } catch (e) {
       if (mounted) _toast('$e');
     }
+  }
+
+  // Compact, desktop-native toolbar for the embedded shell (distinct from the
+  // mobile SnAppBar): slim height, inline muted path, hover-sized controls.
+  Widget _desktopBar(HarnessState? s, bool running) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: const BoxDecoration(
+        color: AppColors.bg,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(children: [
+        if (widget.onMenu != null) ...[
+          IconBtn('sidebar', size: 30, iconSize: 16, tooltip: 'Sidebar', onTap: widget.onMenu),
+          const SizedBox(width: 4),
+        ] else
+          const SizedBox(width: 4),
+        Flexible(
+          child: Text(_title.isEmpty ? 'session' : _title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13.5, color: AppColors.fg1)),
+        ),
+        if (s != null && s.workspace.isNotEmpty) ...[
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(s.workspace, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11, color: AppColors.fg4)),
+          ),
+        ],
+        const Spacer(),
+        if (running) IconBtn('stop', size: 30, iconSize: 16, tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
+        _menu(s),
+      ]),
+    );
   }
 
   Widget _menu(HarnessState? s) {
