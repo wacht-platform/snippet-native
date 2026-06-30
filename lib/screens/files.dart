@@ -171,12 +171,29 @@ class _FileExplorerState extends State<FileExplorer> {
                         IconBtn('x', tooltip: 'Cancel', onTap: _exitSelect),
                       ]
                     : [
-                        if (listing != null && widget.onNewChat != null) IconBtn('edit', tooltip: 'New chat here', onTap: () => widget.onNewChat!(listing.path)),
                         if (listing != null) IconBtn('git-branch', tooltip: 'Git', onTap: () => _openGit(listing.path)),
                         if (listing != null) IconBtn('upload', tooltip: 'Upload files', onTap: _busy != null ? null : () => _upload(listing.path)),
                         if (listing != null) IconBtn('folder-plus', tooltip: 'New folder', onTap: _busy != null ? null : () => _newFolder(listing.path)),
                       ],
               ),
+              // Prominent CTA: start a chat in the folder you're browsing (no session needed).
+              if (!_selecting && listing != null && widget.onNewChat != null)
+                Material(
+                  color: AppColors.accentBg,
+                  child: InkWell(
+                    onTap: () => widget.onNewChat!(listing.path),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
+                      child: Row(children: [
+                        const AppIcon('edit', size: 16, color: AppColors.accent),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text('New chat in this folder', style: sans(13.5, weight: FontWeight.w600, color: AppColors.accent))),
+                        const AppIcon('arrow-right', size: 15, color: AppColors.accent),
+                      ]),
+                    ),
+                  ),
+                ),
               if (_busy != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
