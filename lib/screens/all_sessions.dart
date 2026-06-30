@@ -120,7 +120,25 @@ class _AllSessionsScreenState extends State<AllSessionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // One unified, recency-sorted list across every machine.
+    final combined = <(Instance, SessionInfo)>[];
+    for (final inst in _instances) {
+      for (final s in (_byUrl[inst.url] ?? const <SessionInfo>[])) {
+        combined.add((inst, s));
+      }
+    }
+    combined.sort((a, b) => b.$2.lastActive.compareTo(a.$2.lastActive));
     return Scaffold(
+      floatingActionButton: (_loading || _instances.isEmpty)
+          ? null
+          : FloatingActionButton(
+              backgroundColor: AppColors.accent,
+              foregroundColor: AppColors.accentFg,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.card)),
+              onPressed: _newSessionPicker,
+              child: const AppIcon('plus', size: 22, color: AppColors.accentFg),
+            ),
       body: SafeArea(
         bottom: false,
         child: Column(children: [
@@ -135,22 +153,26 @@ class _AllSessionsScreenState extends State<AllSessionsScreen> {
                     color: AppColors.accent,
                     backgroundColor: AppColors.surface2,
                     onRefresh: _load,
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                      children: [
-                        for (final inst in _instances) ..._machineGroup(inst),
-                        if (_instances.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 60),
-                            child: EmptyState(
-                              icon: 'cpu',
-                              title: 'No machines',
-                              body: 'Connect a machine running snippet serve.',
-                              action: Btn('Add machine', icon: 'plus', onTap: _openInstances),
+                    child: _instances.isEmpty
+                        ? ListView(children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 80),
+                              child: EmptyState(icon: 'cpu', title: 'No machines', body: 'Connect a machine running snippet serve.', action: Btn('Add machine', icon: 'plus', onTap: _openInstances)),
                             ),
-                          ),
-                      ],
-                    ),
+                          ])
+                        : combined.isEmpty
+                            ? ListView(children: const [
+                                Padding(
+                                  padding: EdgeInsets.only(top: 80),
+                                  child: EmptyState(icon: 'layers', title: 'No sessions yet', body: 'Tap + to start one.'),
+                                ),
+                              ])
+                            : ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(6, 4, 6, 96),
+                                itemCount: combined.length,
+                                separatorBuilder: (_, __) => Container(height: 1, margin: const EdgeInsets.only(left: 14), color: AppColors.border),
+                                itemBuilder: (_, i) => _row(combined[i].$1, combined[i].$2),
+                              ),
                   ),
           ),
         ]),
@@ -158,49 +180,37 @@ class _AllSessionsScreenState extends State<AllSessionsScreen> {
     );
   }
 
-  // Each machine is a grouped section card: header + session rows.
-  List<Widget> _machineGroup(Instance inst) {
-    final sessions = _byUrl[inst.url] ?? const [];
-    return [
-      Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: AppColors.surface1,
-          borderRadius: BorderRadius.circular(R.card),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
-            child: Row(children: [
-              Container(
-                width: 28,
-                height: 28,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: AppColors.surface2, borderRadius: BorderRadius.circular(R.sm)),
-                child: const AppIcon('cpu', size: 14, color: AppColors.fg2),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(inst.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13.5, color: AppColors.fg1)),
-                  const SizedBox(height: 1),
-                  Text(sessions.isEmpty ? 'No sessions' : '${sessions.length} session${sessions.length == 1 ? '' : 's'}', style: mono(10.5, color: AppColors.fg4)),
+  Future<void> _newSessionPicker() async {
+    if (_instances.isEmpty) return;
+    if (_instances.length == 1) {
+      _newSession(_instances.first);
+      return;
+    }
+    final inst = await showAppSheet<Instance>(context, title: 'New session on…', child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final i in _instances)
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(R.sm),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(R.sm),
+              onTap: () => Navigator.pop(context, i),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+                child: Row(children: [
+                  const AppIcon('cpu', size: 16, color: AppColors.fg3),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(i.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13.5, color: AppColors.fg1))),
+                  const AppIcon('chevron-right', size: 14, color: AppColors.fg4),
                 ]),
               ),
-              IconBtn('plus', size: 32, iconSize: 18, tooltip: 'New session', onTap: () => _newSession(inst)),
-            ]),
+            ),
           ),
-          if (sessions.isNotEmpty) const Divider(height: 1, thickness: 1, color: AppColors.border),
-          for (var i = 0; i < sessions.length; i++) ...[
-            _row(inst, sessions[i]),
-            if (i < sessions.length - 1)
-              Container(height: 1, margin: const EdgeInsets.only(left: 14), color: AppColors.border),
-          ],
-        ]),
-      ),
-    ];
+      ],
+    ));
+    if (inst != null) _newSession(inst);
   }
 
   Widget _row(Instance inst, SessionInfo s) {
@@ -211,21 +221,22 @@ class _AllSessionsScreenState extends State<AllSessionsScreen> {
       child: InkWell(
         onTap: () => _open(inst, s),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
           child: Row(children: [
             if (running || failed) ...[
               Container(width: 6, height: 6, decoration: BoxDecoration(color: failed ? AppColors.danger : AppColors.accent, shape: BoxShape.circle)),
-              const SizedBox(width: 9),
+              const SizedBox(width: 10),
             ],
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(s.title.isEmpty ? '(untitled)' : s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(12.5, height: 1.25, color: AppColors.fg1)),
+                Text(s.title.isEmpty ? '(untitled)' : s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13.5, height: 1.25, color: AppColors.fg1)),
                 const SizedBox(height: 3),
                 Row(children: [
-                  const AppIcon('folder', size: 10, color: AppColors.fg4),
-                  const SizedBox(width: 5),
-                  Flexible(child: Text(_folderName(s.folder), maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(10, color: AppColors.fg3))),
-                  if (_ago(s.lastActive).isNotEmpty) Text('  ·  ${_ago(s.lastActive)}', style: mono(10, color: AppColors.fg4)),
+                  Expanded(child: Text('${inst.label}  ·  ${_folderName(s.folder)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(10.5, color: AppColors.fg3))),
+                  if (_ago(s.lastActive).isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text(_ago(s.lastActive), style: mono(10.5, color: AppColors.fg4)),
+                  ],
                 ]),
               ]),
             ),

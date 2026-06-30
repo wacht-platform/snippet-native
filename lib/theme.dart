@@ -120,108 +120,108 @@ TextTheme _allRegular(TextTheme t) {
   );
 }
 
-/// Map the app's icon names to the Iconsax (linear) set — slick line icons.
+/// Map the app's icon names to the Iconsax Bold (filled) set — solid, no outline.
 IconData iconFor(String name) {
   switch (name) {
     case 'chevron-left':
-      return IconsaxPlusLinear.arrow_left_2;
+      return IconsaxPlusBold.arrow_left_1;
     case 'chevron-right':
-      return IconsaxPlusLinear.arrow_right_2;
+      return IconsaxPlusBold.arrow_right_2;
     case 'chevron-down':
-      return IconsaxPlusLinear.arrow_down_2;
+      return IconsaxPlusBold.arrow_down_2;
     case 'chevron-up':
-      return IconsaxPlusLinear.arrow_up_2;
+      return IconsaxPlusBold.arrow_up_2;
     case 'arrow-right':
-      return IconsaxPlusLinear.arrow_right_3;
+      return IconsaxPlusBold.arrow_right_3;
     case 'plus':
-      return IconsaxPlusLinear.add;
+      return IconsaxPlusBold.add;
     case 'x':
-      return IconsaxPlusLinear.close_square;
+      return IconsaxPlusBold.close_square;
     case 'more-vertical':
-      return IconsaxPlusLinear.more;
+      return IconsaxPlusBold.more;
     case 'search':
-      return IconsaxPlusLinear.search_normal_1;
+      return IconsaxPlusBold.search_normal_1;
     case 'settings':
-      return IconsaxPlusLinear.setting_2;
+      return IconsaxPlusBold.setting_2;
     case 'sliders':
-      return IconsaxPlusLinear.setting_4;
+      return IconsaxPlusBold.setting_4;
     case 'wifi-off':
-      return IconsaxPlusLinear.wifi_square;
+      return IconsaxPlusBold.wifi_square;
     case 'refresh':
-      return IconsaxPlusLinear.refresh_2;
+      return IconsaxPlusBold.refresh_2;
     case 'alert-triangle':
-      return IconsaxPlusLinear.warning_2;
+      return IconsaxPlusBold.warning_2;
     case 'check':
-      return IconsaxPlusLinear.tick_square;
+      return IconsaxPlusBold.tick_square;
     case 'check-check':
-      return IconsaxPlusLinear.tick_circle;
+      return IconsaxPlusBold.tick_circle;
     case 'stop':
-      return IconsaxPlusLinear.stop;
+      return IconsaxPlusBold.stop;
     case 'send':
-      return IconsaxPlusLinear.arrow_up_3;
+      return IconsaxPlusBold.arrow_up_3;
     case 'shield':
-      return IconsaxPlusLinear.shield_tick;
+      return IconsaxPlusBold.shield_tick;
     case 'folder':
-      return IconsaxPlusLinear.folder_2;
+      return IconsaxPlusBold.folder_2;
     case 'folder-open':
-      return IconsaxPlusLinear.folder_open;
+      return IconsaxPlusBold.folder_open;
     case 'file':
-      return IconsaxPlusLinear.document_text;
+      return IconsaxPlusBold.document_text;
     case 'git-branch':
-      return IconsaxPlusLinear.hierarchy;
+      return IconsaxPlusBold.hierarchy;
     case 'terminal':
-      return IconsaxPlusLinear.code;
+      return IconsaxPlusBold.code;
     case 'grip':
-      return IconsaxPlusLinear.menu;
+      return IconsaxPlusBold.menu;
     case 'edit':
-      return IconsaxPlusLinear.edit_2;
+      return IconsaxPlusBold.edit_2;
     case 'trash':
-      return IconsaxPlusLinear.trash;
+      return IconsaxPlusBold.trash;
     case 'key':
-      return IconsaxPlusLinear.key;
+      return IconsaxPlusBold.key;
     case 'cpu':
-      return IconsaxPlusLinear.cpu;
+      return IconsaxPlusBold.cpu;
     case 'layers':
-      return IconsaxPlusLinear.layer;
+      return IconsaxPlusBold.layer;
     case 'activity':
-      return IconsaxPlusLinear.activity;
+      return IconsaxPlusBold.activity;
     case 'image':
-      return IconsaxPlusLinear.gallery;
+      return IconsaxPlusBold.gallery;
     case 'scan':
-      return IconsaxPlusLinear.scan;
+      return IconsaxPlusBold.scan;
     case 'camera':
-      return IconsaxPlusLinear.camera;
+      return IconsaxPlusBold.camera;
     case 'camera-off':
-      return IconsaxPlusLinear.camera_slash;
+      return IconsaxPlusBold.camera_slash;
     case 'clipboard':
-      return IconsaxPlusLinear.clipboard_text;
+      return IconsaxPlusBold.clipboard_text;
     case 'history':
-      return IconsaxPlusLinear.timer_1;
+      return IconsaxPlusBold.timer_1;
     case 'zap':
-      return IconsaxPlusLinear.flash_1;
+      return IconsaxPlusBold.flash_1;
     case 'minimize':
-      return IconsaxPlusLinear.minus;
+      return IconsaxPlusBold.minus;
     case 'rotate':
-      return IconsaxPlusLinear.rotate_left;
+      return IconsaxPlusBold.rotate_left;
     case 'globe':
-      return IconsaxPlusLinear.global;
+      return IconsaxPlusBold.global;
     case 'map':
-      return IconsaxPlusLinear.map;
+      return IconsaxPlusBold.map;
     case 'list':
-      return IconsaxPlusLinear.task_square;
+      return IconsaxPlusBold.task_square;
     case 'file-plus':
-      return IconsaxPlusLinear.document_upload;
+      return IconsaxPlusBold.document_upload;
     case 'corner-down-right':
-      return IconsaxPlusLinear.direct_right;
+      return IconsaxPlusBold.direct_right;
     case 'home':
-      return IconsaxPlusLinear.home_2;
+      return IconsaxPlusBold.home_2;
     case 'clock':
-      return IconsaxPlusLinear.clock;
+      return IconsaxPlusBold.clock;
     case 'sidebar':
-      return IconsaxPlusLinear.menu;
+      return IconsaxPlusBold.menu;
     case 'menu':
-      return IconsaxPlusLinear.menu;
+      return IconsaxPlusBold.menu;
     default:
-      return IconsaxPlusLinear.element_3;
+      return IconsaxPlusBold.element_3;
   }
 }
