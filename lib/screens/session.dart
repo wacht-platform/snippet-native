@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -587,20 +588,27 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: TextField(
-                  controller: _input,
-                  minLines: 1,
-                  maxLines: 6,
-                  cursorColor: AppColors.accent,
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) => _sendMessage(),
-                  style: sans(13.5, height: 1.4, color: AppColors.fg1),
-                  decoration: InputDecoration(
-                    isCollapsed: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                    border: InputBorder.none,
-                    hintText: 'Message snippet…',
-                    hintStyle: sans(13.5, color: AppColors.fg4),
+                // Cmd/Ctrl+Enter sends (handy on desktop where Enter inserts a newline).
+                child: CallbackShortcuts(
+                  bindings: {
+                    const SingleActivator(LogicalKeyboardKey.enter, meta: true): () { if (canSend) _sendMessage(); },
+                    const SingleActivator(LogicalKeyboardKey.enter, control: true): () { if (canSend) _sendMessage(); },
+                  },
+                  child: TextField(
+                    controller: _input,
+                    minLines: 1,
+                    maxLines: 6,
+                    cursorColor: AppColors.accent,
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) => _sendMessage(),
+                    style: sans(13.5, height: 1.4, color: AppColors.fg1),
+                    decoration: InputDecoration(
+                      isCollapsed: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      border: InputBorder.none,
+                      hintText: 'Message snippet…',
+                      hintStyle: sans(13.5, color: AppColors.fg4),
+                    ),
                   ),
                 ),
               ),
