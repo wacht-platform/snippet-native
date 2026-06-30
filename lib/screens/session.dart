@@ -586,7 +586,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             borderRadius: BorderRadius.circular(R.md + 3),
           ),
           padding: const EdgeInsets.all(4),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
             IconBtn('plus', size: 30, iconSize: 18, tooltip: 'Attach image', onTap: _uploading ? null : _attachImage),
             Expanded(
               child: Padding(
