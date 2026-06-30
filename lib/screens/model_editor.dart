@@ -37,6 +37,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
   bool _showKey = false;
   late bool _images;
   bool _active = false;
+  String _effort = ''; // '' = provider default
   bool _busy = false;
   String? _error;
 
@@ -54,6 +55,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
     _ctx = TextEditingController(text: (e?.contextWindow ?? 0) > 0 ? '${e!.contextWindow}' : '');
     _images = _defaultImages(_provider);
     _active = e?.active ?? !_isEdit;
+    _effort = e?.reasoningEffort ?? '';
   }
 
   @override
@@ -79,6 +81,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
         baseUrl: _needsBaseUrl(_provider) ? _baseUrl.text.trim() : null,
         model: _model.text.trim(),
         apiKey: _key.text.trim().isEmpty ? null : _key.text.trim(),
+        reasoningEffort: _effort.isEmpty ? null : _effort,
         supportsImages: _images,
         contextWindow: int.tryParse(_ctx.text.trim()),
         setActive: _active,
@@ -147,6 +150,27 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
                   hint: 'e.g. 200000 — blank keeps the default',
                   helper: 'Sets the % context gauge and the point where the agent compacts history.',
                 ),
+                const SizedBox(height: 16),
+                Text('Reasoning effort', style: sans(12, weight: FontWeight.w500, color: AppColors.fg2)),
+                const SizedBox(height: 7),
+                Wrap(spacing: 7, runSpacing: 7, children: [
+                  for (final (val, label) in const [('', 'Default'), ('off', 'Off'), ('low', 'Low'), ('medium', 'Medium'), ('high', 'High')])
+                    GestureDetector(
+                      onTap: () => setState(() => _effort = val),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _effort == val ? AppColors.accentBg : AppColors.surface2,
+                          borderRadius: BorderRadius.circular(99),
+                          border: Border.all(color: _effort == val ? AppColors.accentLine : AppColors.border),
+                        ),
+                        child: Text(label, style: sans(12.5, weight: FontWeight.w500, color: _effort == val ? AppColors.accent : AppColors.fg2)),
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: 6),
+                Text("Higher means more thinking — better on hard problems, more tokens. Default uses the provider's own; Off disables reasoning. Applies to reasoning models (OpenAI/Codex, Gemini, Anthropic).",
+                    style: sans(11.5, height: 1.4, color: AppColors.fg4)),
                 const SizedBox(height: 16),
                 if (_isChatgpt)
                   Text('ChatGPT uses the subscription login set up in the TUI — no API key here.', style: sans(12, height: 1.4, color: AppColors.fg3))

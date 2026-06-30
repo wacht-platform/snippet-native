@@ -38,6 +38,7 @@ class ModelProfile {
   final bool hasKey;
   final bool active;
   final int contextWindow;
+  final String reasoningEffort; // '' = provider default
 
   ModelProfile.fromJson(Map<String, dynamic> j)
       : name = j['name'] as String? ?? '',
@@ -46,7 +47,8 @@ class ModelProfile {
         model = j['model'] as String? ?? '',
         hasKey = j['has_key'] == true,
         active = j['active'] == true,
-        contextWindow = (j['context_window'] as num?)?.toInt() ?? 0;
+        contextWindow = (j['context_window'] as num?)?.toInt() ?? 0,
+        reasoningEffort = j['reasoning_effort'] as String? ?? '';
 }
 
 class ServerConfig {
