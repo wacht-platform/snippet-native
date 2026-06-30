@@ -5,26 +5,17 @@ import 'theme.dart';
 
 enum PanelStyle { drawer, dialog }
 
-/// Present [builder]'s screen as a desktop overlay when the WINDOW is wide
-/// (a right-side drawer, or a centered floating dialog), else fall back to a
-/// full-screen push (phone). The hosted screen runs inside a nested Navigator
-/// so its own sub-pushes (e.g. Git→diff, Files→viewer→editor) stay within the
-/// overlay; [builder] is handed a `close` callback to dismiss the whole overlay
-/// from the screen's root (wire it to the screen's onClose/back).
+/// Present [builder]'s screen as an overlay whose layout adapts to the window:
+/// full-screen when narrow (phone / shrunk window), a right-side drawer or a
+/// centered dialog when wide. Because the layout is chosen inside a LayoutBuilder,
+/// it re-lays out live when the window crosses the breakpoint while open. Insets
+/// below the macOS window controls. [builder] gets a `close` callback to dismiss.
 Future<T?> presentScreen<T>(
   BuildContext context, {
   required Widget Function(BuildContext context, VoidCallback close) builder,
   PanelStyle style = PanelStyle.drawer,
   bool dismissible = true,
 }) {
-  // Use the real window width (not a pane-scoped MediaQuery override).
-  final view = View.of(context);
-  final windowWidth = view.physicalSize.width / view.devicePixelRatio;
-  if (windowWidth < kDesktopBreakpoint) {
-    return Navigator.of(context).push<T>(MaterialPageRoute(
-      builder: (ctx) => builder(ctx, () => Navigator.of(ctx).pop()),
-    ));
-  }
   return showGeneralDialog<T>(
     context: context,
     barrierDismissible: dismissible,
@@ -33,29 +24,35 @@ Future<T?> presentScreen<T>(
     transitionDuration: const Duration(milliseconds: 180),
     pageBuilder: (ctx, _, __) {
       void close() => Navigator.of(ctx).pop();
-      // Host the screen directly (no nested Navigator — that swallowed pointer
-      // events on desktop). Any sub-pushes (file viewer, diff) go to the root
-      // navigator full-screen, which is fine over a panel.
+      // Host the screen directly; sub-pushes (file viewer, diff) go to the root
+      // navigator over the panel, which is fine.
       final content = builder(ctx, close);
-      if (style == PanelStyle.dialog) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1040, maxHeight: 860),
-              child: _frame(content, rounded: true),
+      return LayoutBuilder(builder: (lctx, c) {
+        final wide = c.maxWidth >= kDesktopBreakpoint;
+        final top = kMacOS ? kMacTitlebar : 0.0;
+        if (!wide) {
+          // Full-screen (re-lays out to drawer/dialog if the window grows).
+          return Padding(padding: EdgeInsets.only(top: top), child: _frame(content, rounded: false, edge: false));
+        }
+        if (style == PanelStyle.dialog) {
+          return Padding(
+            padding: EdgeInsets.only(top: top),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1040, maxHeight: 860), child: _frame(content, rounded: true)),
+              ),
             ),
+          );
+        }
+        return Padding(
+          padding: EdgeInsets.only(top: top),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: SizedBox(width: c.maxWidth < 520 ? c.maxWidth : 520.0, height: double.infinity, child: _frame(content, rounded: false, edge: true)),
           ),
         );
-      }
-      return Align(
-        alignment: Alignment.centerRight,
-        child: SizedBox(
-          width: 520,
-          height: double.infinity,
-          child: _frame(content, rounded: false),
-        ),
-      );
+      });
     },
     transitionBuilder: (ctx, anim, _, child) {
       final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
@@ -113,7 +110,7 @@ Future<T?> showModal<T>(
   );
 }
 
-Widget _frame(Widget child, {required bool rounded}) => Material(
+Widget _frame(Widget child, {required bool rounded, bool edge = true}) => Material(
       color: AppColors.bg,
       borderRadius: rounded ? BorderRadius.circular(R.card) : null,
       clipBehavior: Clip.antiAlias,
@@ -122,7 +119,7 @@ Widget _frame(Widget child, {required bool rounded}) => Material(
           borderRadius: rounded ? BorderRadius.circular(R.card) : null,
           border: rounded
               ? Border.all(color: AppColors.border2)
-              : const Border(left: BorderSide(color: AppColors.border2)),
+              : (edge ? const Border(left: BorderSide(color: AppColors.border2)) : null),
         ),
         child: child,
       ),
