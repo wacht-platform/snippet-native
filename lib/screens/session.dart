@@ -589,7 +589,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       final p = pending;
       if (p != null) {
         final name = _s(p['tool_name']);
-        group.add(ToolLine(tool: name, icon: toolIcon(name), arg: toolArgSummary(name, p['arguments']), done: false, onTap: () => _showToolDetail(name, p['arguments'], null)));
+        group.add(ToolLine(tool: name, icon: toolIcon(name), arg: toolArgSummary(name, p['arguments']), done: false, detailBuilder: (ctx) => toolDetailView(ctx, tool: name, args: p['arguments'], result: null)));
         pending = null;
       }
     }
@@ -622,12 +622,12 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             final p = pending;
             if (p != null) {
               final name = _s(p['tool_name']);
-              group.add(ToolLine(tool: name, icon: toolIcon(name), arg: toolArgSummary(name, p['arguments']), out: _resultStatus(e['result']), done: _ok(e['result']), onTap: () => _showToolDetail(name, p['arguments'], e['result'])));
+              group.add(ToolLine(tool: name, icon: toolIcon(name), arg: toolArgSummary(name, p['arguments']), out: _resultStatus(e['result']), done: _ok(e['result']), detailBuilder: (ctx) => toolDetailView(ctx, tool: name, args: p['arguments'], result: e['result'])));
               pending = null;
             } else {
               final name = _s(e['tool_name']);
               if (_isMetaTool(name)) break;
-              group.add(ToolLine(tool: name, icon: toolIcon(name), out: _resultStatus(e['result']), done: _ok(e['result']), onTap: () => _showToolDetail(name, null, e['result'])));
+              group.add(ToolLine(tool: name, icon: toolIcon(name), out: _resultStatus(e['result']), done: _ok(e['result']), detailBuilder: (ctx) => toolDetailView(ctx, tool: name, args: null, result: e['result'])));
             }
           }
         case 'user_input':
@@ -693,11 +693,6 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
 
   bool _ok(dynamic r) => !(r is Map && r['status'] == 'error');
 
-  void _showToolDetail(String name, dynamic args, dynamic result) {
-    showAppSheet(context,
-        title: toolTitle(name),
-        child: toolDetailView(context, tool: name, args: args, result: result));
-  }
 
   Future<void> _switchModel() async {
     ServerConfig cfg;
@@ -971,24 +966,46 @@ class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderState
 
 /// A message sent mid-run, shown right-aligned + dimmed with a cancel (✕) until
 /// the daemon applies it (then it's replaced by the real bubble).
-/// A run of consecutive tool calls, grouped under a left rule with a small
-/// "N steps" header (boxless — just the rule).
-class _ToolGroup extends StatelessWidget {
+/// A run of consecutive tool calls, grouped under a left rule. The "N steps"
+/// header toggles the group collapsed/expanded.
+class _ToolGroup extends StatefulWidget {
   final List<Widget> children;
   const _ToolGroup(this.children);
   @override
+  State<_ToolGroup> createState() => _ToolGroupState();
+}
+
+class _ToolGroupState extends State<_ToolGroup> {
+  bool _open = true;
+  @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 3, 4, 3),
+      padding: const EdgeInsets.fromLTRB(10, 2, 4, 2),
       decoration: const BoxDecoration(
         border: Border(left: BorderSide(color: AppColors.border2, width: 2)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 2, bottom: 3),
-          child: Text('${children.length} STEPS', style: sans(9.5, color: AppColors.fg4, spacing: 0.8)),
+        Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(R.sm),
+          child: InkWell(
+            onTap: () => setState(() => _open = !_open),
+            borderRadius: BorderRadius.circular(R.sm),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+              child: Row(children: [
+                AnimatedRotation(
+                  turns: _open ? 0.25 : 0,
+                  duration: const Duration(milliseconds: 150),
+                  child: const AppIcon('chevron-right', size: 12, color: AppColors.fg4),
+                ),
+                const SizedBox(width: 6),
+                Text('${widget.children.length} steps', style: sans(10.5, color: AppColors.fg4, spacing: 0.5)),
+              ]),
+            ),
+          ),
         ),
-        ...children,
+        if (_open) ...widget.children,
       ]),
     );
   }

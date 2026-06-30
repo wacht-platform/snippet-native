@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../command_palette.dart';
 import '../models.dart';
 import '../panel.dart';
 import '../store.dart';
@@ -301,22 +302,12 @@ class _SidebarState extends State<_Sidebar> {
   List<SessionInfo>? _sessions;
   bool _loading = false;
   bool _adding = false; // inline add-instance field revealed
-  bool _searching = false;
-  String _filter = '';
-  final TextEditingController _filterCtrl = TextEditingController();
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _filterCtrl.addListener(() => setState(() => _filter = _filterCtrl.text));
     _load();
-  }
-
-  @override
-  void dispose() {
-    _filterCtrl.dispose();
-    super.dispose();
   }
 
   String _ago(int unixSec) {
@@ -375,6 +366,19 @@ class _SidebarState extends State<_Sidebar> {
     }
   }
 
+  void _openSearch() {
+    showCommandPalette(
+      context,
+      sessions: _sessions ?? const [],
+      onOpenChat: (s) => widget.onOpenSession(s.id, s.title, s.profile),
+      commands: [
+        PaletteCommand('edit', 'New chat', '', _newSession),
+        PaletteCommand('folder', 'Open folder', '', _newSession),
+        PaletteCommand('settings', 'Settings', '', _openSettings),
+      ],
+    );
+  }
+
   void _openSettings() {
     final c = widget.client;
     if (c == null) return;
@@ -395,12 +399,7 @@ class _SidebarState extends State<_Sidebar> {
       child: Column(children: [
         const SizedBox(height: 6),
         _navRow('edit', 'New chat', onTap: hasClient ? _newSession : null),
-        _navRow('search', 'Search', active: _searching, onTap: hasClient ? () => setState(() => _searching = !_searching) : null),
-        if (_searching && hasClient)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
-            child: AppField(controller: _filterCtrl, icon: 'search', hint: 'Filter chats…', autofocus: true),
-          ),
+        _navRow('search', 'Search', onTap: hasClient ? _openSearch : null),
         const SizedBox(height: 4),
         Expanded(
           child: !hasClient
@@ -448,13 +447,9 @@ class _SidebarState extends State<_Sidebar> {
     if (_error != null) {
       return Padding(padding: const EdgeInsets.all(16), child: Text(_error!, style: sans(12, color: AppColors.fg3)));
     }
-    final all = _sessions ?? const <SessionInfo>[];
-    final q = _filter.trim().toLowerCase();
-    final list = q.isEmpty
-        ? all
-        : all.where((s) => s.title.toLowerCase().contains(q) || s.folder.toLowerCase().contains(q)).toList();
+    final list = _sessions ?? const <SessionInfo>[];
     if (list.isEmpty) {
-      return Center(child: Padding(padding: const EdgeInsets.all(20), child: Text(q.isEmpty ? 'No chats yet.' : 'No matches.', style: sans(12.5, color: AppColors.fg4))));
+      return Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('No chats yet.', style: sans(12.5, color: AppColors.fg4))));
     }
     // Group chats by folder (project), preserving recency order.
     final order = <String>[];

@@ -342,45 +342,70 @@ class Bubble extends StatelessWidget {
   }
 }
 
-/// Mono tool-activity line with an optional result. Tappable → detail drawer.
-class ToolLine extends StatelessWidget {
+/// Mono tool-activity line with an optional result. When [detailBuilder] is set,
+/// tapping expands the full detail INLINE (not a drawer).
+class ToolLine extends StatefulWidget {
   final String tool;
   final String arg;
   final String? out;
   final bool done;
   final String icon;
-  final VoidCallback? onTap;
-  const ToolLine({super.key, required this.tool, this.arg = '', this.out, this.done = true, this.icon = 'terminal', this.onTap});
+  final WidgetBuilder? detailBuilder;
+  const ToolLine({super.key, required this.tool, this.arg = '', this.out, this.done = true, this.icon = 'terminal', this.detailBuilder});
+  @override
+  State<ToolLine> createState() => _ToolLineState();
+}
+
+class _ToolLineState extends State<ToolLine> {
+  bool _expanded = false;
   @override
   Widget build(BuildContext context) {
-    final inner = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    final expandable = widget.detailBuilder != null;
+    final header = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        AppIcon(icon, size: 13, color: AppColors.fg3),
+        AppIcon(widget.icon, size: 13, color: AppColors.fg3),
         const SizedBox(width: 7),
-        Text(tool, style: mono(12, color: AppColors.accent)),
+        Text(widget.tool, style: mono(12, color: AppColors.fg1)),
         const SizedBox(width: 7),
-        Expanded(child: Text(arg, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(12, color: AppColors.fg2))),
-        if (onTap != null) const Padding(padding: EdgeInsets.only(left: 4), child: AppIcon('chevron-right', size: 14, color: AppColors.fg4)),
+        Expanded(child: Text(widget.arg, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(12, color: AppColors.fg3))),
+        if (expandable)
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: AnimatedRotation(
+              turns: _expanded ? 0.25 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: const AppIcon('chevron-right', size: 14, color: AppColors.fg4),
+            ),
+          ),
       ]),
-      if (out != null)
+      if (widget.out != null)
         Padding(
           padding: const EdgeInsets.only(left: 20, top: 3),
           child: Row(children: [
-            Text('↳ ', style: mono(11.5, color: done ? AppColors.ok : AppColors.fg4)),
-            Expanded(child: Text(out!, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3))),
+            Text('↳ ', style: mono(11.5, color: widget.done ? AppColors.fg2 : AppColors.fg4)),
+            Expanded(child: Text(widget.out!, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3))),
           ]),
         ),
     ]);
-    if (onTap == null) return Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: inner);
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(R.sm),
-      child: InkWell(
-        onTap: onTap,
+    if (!expandable) {
+      return Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: header);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Material(
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(R.sm),
-        child: Padding(padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4), child: inner),
+        child: InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          borderRadius: BorderRadius.circular(R.sm),
+          child: Padding(padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4), child: header),
+        ),
       ),
-    );
+      if (_expanded)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 2, 4, 6),
+          child: widget.detailBuilder!(context),
+        ),
+    ]);
   }
 }
 
