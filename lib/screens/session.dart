@@ -407,23 +407,27 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         color: AppColors.canvas,
         border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
-      // Full-width toolbar: title at the left, actions at the right edge.
+      // Full-width toolbar: title (+path) takes all free space so the actions
+      // are pushed to the extreme right.
       child: Row(children: [
         if (widget.onMenu != null) ...[
           IconBtn('sidebar', size: 30, iconSize: 16, tooltip: 'Sidebar', onTap: widget.onMenu),
           const SizedBox(width: 4),
         ] else
           const SizedBox(width: 2),
-        Flexible(
-          child: Text(_title.isEmpty ? 'session' : _title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13.5, color: AppColors.fg1)),
+        Expanded(
+          child: Row(children: [
+            Flexible(
+              child: Text(_title.isEmpty ? 'session' : _title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13.5, color: AppColors.fg1)),
+            ),
+            if (s != null && s.workspace.isNotEmpty) ...[
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(s.workspace, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11, color: AppColors.fg4)),
+              ),
+            ],
+          ]),
         ),
-        if (s != null && s.workspace.isNotEmpty) ...[
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(s.workspace, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11, color: AppColors.fg4)),
-          ),
-        ],
-        const Spacer(),
         if (running) IconBtn('stop', size: 30, iconSize: 16, tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
         _menu(s),
       ]),

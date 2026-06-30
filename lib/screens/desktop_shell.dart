@@ -223,14 +223,15 @@ class _DesktopShellState extends State<DesktopShell> {
 class _AddInstanceField extends StatefulWidget {
   final void Function(Instance) onAdded;
   final bool dense;
-  const _AddInstanceField({required this.onAdded, this.dense = false});
+  final bool startOpen; // reveal the input immediately (no intermediate button)
+  const _AddInstanceField({required this.onAdded, this.dense = false, this.startOpen = false});
   @override
   State<_AddInstanceField> createState() => _AddInstanceFieldState();
 }
 
 class _AddInstanceFieldState extends State<_AddInstanceField> {
   final _ctrl = TextEditingController();
-  bool _open = false;
+  late bool _open = widget.startOpen;
   bool _busy = false;
   String? _error;
 
@@ -457,7 +458,7 @@ class _SidebarState extends State<_Sidebar> {
         if (_adding)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-            child: _AddInstanceField(dense: true, onAdded: (inst) {
+            child: _AddInstanceField(dense: true, startOpen: true, onAdded: (inst) {
               setState(() => _adding = false);
               widget.onInstanceAdded(inst);
             }),
