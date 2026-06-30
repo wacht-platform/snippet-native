@@ -8,7 +8,6 @@ import '../panel.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'files.dart';
 import 'folder_browser.dart';
 import 'models.dart';
 import 'session.dart';
@@ -302,12 +301,31 @@ class _SidebarState extends State<_Sidebar> {
   List<SessionInfo>? _sessions;
   bool _loading = false;
   bool _adding = false; // inline add-instance field revealed
+  bool _searching = false;
+  String _filter = '';
+  final TextEditingController _filterCtrl = TextEditingController();
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _filterCtrl.addListener(() => setState(() => _filter = _filterCtrl.text));
     _load();
+  }
+
+  @override
+  void dispose() {
+    _filterCtrl.dispose();
+    super.dispose();
+  }
+
+  String _ago(int unixSec) {
+    if (unixSec == 0) return '';
+    final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(unixSec * 1000));
+    if (d.inMinutes < 60) return '${d.inMinutes < 1 ? 1 : d.inMinutes}m';
+    if (d.inHours < 24) return '${d.inHours}h';
+    if (d.inDays < 30) return '${d.inDays}d';
+    return '${(d.inDays / 30).floor()}mo';
   }
 
   @override
@@ -357,12 +375,6 @@ class _SidebarState extends State<_Sidebar> {
     }
   }
 
-  void _openFiles() {
-    final c = widget.client;
-    if (c == null) return;
-    presentScreen(context, builder: (_, close) => FileExplorer(client: c, onClose: close));
-  }
-
   void _openSettings() {
     final c = widget.client;
     if (c == null) return;
@@ -375,73 +387,155 @@ class _SidebarState extends State<_Sidebar> {
     ));
   }
 
-  String _pill(String s) => switch (s) {
-        'running' || 'waiting_for_input' => 'running',
-        'failed' || 'error' => 'error',
-        _ => 'idle',
-      };
-
   @override
   Widget build(BuildContext context) {
     final hasClient = widget.client != null;
     return Container(
       color: AppColors.surface1, // subtle panel shade distinct from the main pane
       child: Column(children: [
-        Row(children: [
-          Expanded(child: _instanceHeader()),
-          if (hasClient)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: IconBtn('settings', size: 34, iconSize: 17, tooltip: 'Settings', onTap: _openSettings),
-            ),
-        ]),
-        const Divider(height: 1, thickness: 1, color: AppColors.border),
+        const SizedBox(height: 6),
+        _navRow('edit', 'New chat', onTap: hasClient ? _newSession : null),
+        _navRow('search', 'Search', active: _searching, onTap: hasClient ? () => setState(() => _searching = !_searching) : null),
+        if (_searching && hasClient)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+            child: AppField(controller: _filterCtrl, icon: 'search', hint: 'Filter chats…', autofocus: true),
+          ),
+        const SizedBox(height: 4),
+        Expanded(
+          child: !hasClient
+              ? Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('Add an instance to begin.', textAlign: TextAlign.center, style: sans(12.5, color: AppColors.fg4))))
+              : _projects(),
+        ),
         if (_adding)
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
             child: _AddInstanceField(dense: true, onAdded: (inst) {
               setState(() => _adding = false);
               widget.onInstanceAdded(inst);
             }),
           ),
-        // No instance → no sessions; just a hint (the main pane shows the welcome).
-        if (!hasClient)
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text('Add an instance to begin.', textAlign: TextAlign.center, style: sans(12.5, color: AppColors.fg4)),
-              ),
-            ),
-          )
-        else ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 6),
-            child: Row(children: [
-              Expanded(child: Text('SESSIONS', style: sans(11, color: AppColors.fg3, spacing: 0.4))),
-              IconBtn('refresh', size: 30, iconSize: 15, onTap: _loading ? null : _load),
-            ]),
-          ),
-          Expanded(child: _sessionList()),
-          const Divider(height: 1, thickness: 1, color: AppColors.border),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-            child: Column(children: [
-              Btn('New session', icon: 'plus', full: true, small: true, onTap: _newSession),
-              const SizedBox(height: 6),
-              Btn('Files', icon: 'folder', variant: BtnVariant.secondary, full: true, small: true, onTap: _openFiles),
-            ]),
-          ),
-        ],
+        const Divider(height: 1, thickness: 1, color: AppColors.border),
+        _footer(),
       ]),
     );
   }
 
-  Widget _instanceHeader() {
-    final active = widget.active;
+  Widget _navRow(String icon, String label, {VoidCallback? onTap, bool active = false}) {
+    return Material(
+      color: active ? AppColors.accentBg : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Opacity(
+          opacity: onTap == null ? 0.45 : 1,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+            child: Row(children: [
+              AppIcon(icon, size: 16, color: AppColors.fg2),
+              const SizedBox(width: 11),
+              Text(label, style: sans(13, color: AppColors.fg1)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _projects() {
+    if (_loading && _sessions == null) {
+      return const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)));
+    }
+    if (_error != null) {
+      return Padding(padding: const EdgeInsets.all(16), child: Text(_error!, style: sans(12, color: AppColors.fg3)));
+    }
+    final all = _sessions ?? const <SessionInfo>[];
+    final q = _filter.trim().toLowerCase();
+    final list = q.isEmpty
+        ? all
+        : all.where((s) => s.title.toLowerCase().contains(q) || s.folder.toLowerCase().contains(q)).toList();
+    if (list.isEmpty) {
+      return Center(child: Padding(padding: const EdgeInsets.all(20), child: Text(q.isEmpty ? 'No chats yet.' : 'No matches.', style: sans(12.5, color: AppColors.fg4))));
+    }
+    // Group chats by folder (project), preserving recency order.
+    final order = <String>[];
+    final groups = <String, List<SessionInfo>>{};
+    for (final s in list) {
+      (groups[s.folder] ??= () {
+        order.add(s.folder);
+        return <SessionInfo>[];
+      }())
+          .add(s);
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(8, 2, 8, 10),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(6, 6, 4, 4),
+          child: Row(children: [
+            const Expanded(child: SectionLabel('Projects')),
+            IconBtn('refresh', size: 26, iconSize: 13, onTap: _loading ? null : _load),
+          ]),
+        ),
+        for (final f in order) ...[
+          _projectHeader(f),
+          ...groups[f]!.map(_sessionRow),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+
+  Widget _projectHeader(String folder) {
+    final name = folder.split('/').where((p) => p.isNotEmpty).lastOrNull ?? (folder.isEmpty ? '—' : folder);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 6, 6, 3),
+      child: Row(children: [
+        const AppIcon('layers', size: 13, color: AppColors.fg3),
+        const SizedBox(width: 8),
+        Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(12, color: AppColors.fg2))),
+      ]),
+    );
+  }
+
+  Widget _sessionRow(SessionInfo s) {
+    final selected = s.id == widget.selectedSessionId;
+    final running = s.status == 'running' || s.status == 'waiting_for_input';
+    return Material(
+      color: selected ? AppColors.accentBg : Colors.transparent,
+      borderRadius: BorderRadius.circular(R.sm),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(R.sm),
+        onTap: () => widget.onOpenSession(s.id, s.title, s.profile),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 6, 8, 6),
+          child: Row(children: [
+            if (running) ...[
+              Container(width: 5, height: 5, decoration: const BoxDecoration(color: AppColors.fg1, shape: BoxShape.circle)),
+              const SizedBox(width: 7),
+            ],
+            Expanded(child: Text(s.title.isEmpty ? '(untitled)' : s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(12.5, color: selected ? AppColors.fg1 : AppColors.fg2))),
+            const SizedBox(width: 6),
+            Text(_ago(s.lastActive), style: mono(10, color: AppColors.fg4)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _footer() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 6, 6, 8),
+      child: Row(children: [
+        Expanded(child: _instanceProfile(widget.active)),
+        if (widget.client != null) IconBtn('settings', size: 32, iconSize: 16, tooltip: 'Settings', onTap: _openSettings),
+      ]),
+    );
+  }
+
+  Widget _instanceProfile(Instance? active) {
     return PopupMenuButton<String>(
       color: AppColors.surface2,
-      offset: const Offset(0, 44),
+      offset: const Offset(0, -8),
       elevation: 8,
       constraints: const BoxConstraints(minWidth: 224, maxWidth: 280),
       menuPadding: const EdgeInsets.symmetric(vertical: 4),
@@ -476,60 +570,21 @@ class _SidebarState extends State<_Sidebar> {
           ]),
         ),
       ],
-      child: Container(
-        height: 48,
-        padding: const EdgeInsets.fromLTRB(14, 0, 10, 0),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         child: Row(children: [
-          const AppIcon('cpu', size: 16, color: AppColors.accent),
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: AppColors.surface3, borderRadius: BorderRadius.circular(R.sm)),
+            child: const AppIcon('cpu', size: 14, color: AppColors.fg2),
+          ),
           const SizedBox(width: 9),
-          Expanded(child: Text(active?.label ?? 'No instance', maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13.5, color: AppColors.fg1))),
-          const AppIcon('chevron-down', size: 15, color: AppColors.fg3),
+          Expanded(child: Text(active?.label ?? 'No instance', maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(12.5, color: AppColors.fg1))),
+          const AppIcon('chevron-down', size: 14, color: AppColors.fg3),
         ]),
       ),
-    );
-  }
-
-  Widget _sessionList() {
-    if (_loading && _sessions == null) {
-      return const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)));
-    }
-    if (_error != null) {
-      return Padding(padding: const EdgeInsets.all(16), child: Text(_error!, style: sans(12, color: AppColors.fg3)));
-    }
-    final list = _sessions ?? const [];
-    if (list.isEmpty) {
-      return const EmptyState(icon: 'layers', title: 'No sessions', body: 'Start a new one below.');
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-      itemCount: list.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 4),
-      itemBuilder: (_, i) {
-        final s = list[i];
-        final selected = s.id == widget.selectedSessionId;
-        return Material(
-          color: selected ? AppColors.accentBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(R.sm),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(R.sm),
-            onTap: () => widget.onOpenSession(s.id, s.title, s.profile),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-              child: Row(children: [
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(s.title.isEmpty ? '(untitled)' : s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(12.5, color: selected ? AppColors.fg1 : AppColors.fg1)),
-                    const SizedBox(height: 2),
-                    Text(s.folder.split('/').where((p) => p.isNotEmpty).lastOrNull ?? s.folder, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(10.5, color: AppColors.fg4)),
-                  ]),
-                ),
-                const SizedBox(width: 6),
-                StatusPill(status: _pill(s.status)),
-              ]),
-            ),
-          ),
-        );
-      },
     );
   }
 }
