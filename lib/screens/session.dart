@@ -399,7 +399,19 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     _reconnectTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     reportOpenSession('');
-    _channel?.sink.close();
+    // Flush anything still queued so leaving the chat doesn't lose it — the daemon
+    // queues it server-side (pending_inputs) and applies it on the next turn. Give
+    // the frames a moment to flush before tearing the socket down.
+    final ch = _channel;
+    if (_queued.isNotEmpty && ch != null) {
+      for (final m in _queued) {
+        ch.sink.add(jsonEncode({'kind': 'user_message', 'value': m}));
+      }
+      _queued.clear();
+      Future.delayed(const Duration(milliseconds: 300), () => ch.sink.close());
+    } else {
+      ch?.sink.close();
+    }
     _input.dispose();
     _scroll.dispose();
     super.dispose();
