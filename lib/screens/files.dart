@@ -301,8 +301,12 @@ class _FileViewerState extends State<FileViewer> {
     setState(() => _downloading = true);
     try {
       final bytes = await widget.client.downloadFile(widget.path);
-      // Mobile: saveFile writes directly. Desktop: it returns a path to write to.
-      final saved = await FilePicker.platform.saveFile(fileName: widget.name, bytes: bytes);
+      // Mobile: saveFile writes the bytes directly. Desktop: bytes aren't
+      // supported — it returns the chosen path and we write the file ourselves.
+      final saved = await FilePicker.platform.saveFile(
+        fileName: widget.name,
+        bytes: kMobile ? bytes : null,
+      );
       if (saved != null && !kMobile) await File(saved).writeAsBytes(bytes);
       if (!mounted) return;
       setState(() => _downloading = false);
