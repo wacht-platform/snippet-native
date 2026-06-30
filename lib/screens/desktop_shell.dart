@@ -12,7 +12,6 @@ import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'files.dart';
-import 'folder_browser.dart';
 import 'models.dart';
 import 'session.dart';
 
@@ -107,17 +106,29 @@ class _DesktopShellState extends State<DesktopShell> {
     }
   }
 
+  // Start a chat by browsing to a folder in the file explorer and tapping
+  // "New chat here" — the explorer doubles as the new-chat picker.
   Future<void> _newSessionFlow() async {
     final c = _client;
     if (c == null) return;
-    final id = await presentScreen<String>(
+    await presentScreen(
       context,
-      builder: (_, close) => FolderBrowser(client: c, newConversation: true),
+      builder: (_, close) => FileExplorer(
+        client: c,
+        title: _active?.label ?? 'Files',
+        onClose: close,
+        onNewChat: (folder) async {
+          try {
+            final id = await c.openSession(folder, newConversation: true);
+            _openSession(id, 'New session', null);
+            _loadSessions();
+          } catch (e) {
+            if (mounted) toast(context, '$e', danger: true);
+          }
+          close();
+        },
+      ),
     );
-    if (id != null) {
-      _openSession(id, 'New session', null);
-      _loadSessions();
-    }
   }
 
   void _selectInstance(Instance inst) {
@@ -524,13 +535,6 @@ class _SidebarState extends State<_Sidebar> {
     return '${(d.inDays / 30).floor()}mo';
   }
 
-  // Browse files (and run git) on any folder without opening a chat.
-  void _openFiles() {
-    final c = widget.client;
-    if (c == null) return;
-    presentScreen(context, builder: (_, close) => FileExplorer(client: c, title: widget.active?.label ?? 'Files', onClose: close));
-  }
-
   void _openSearch() {
     showCommandPalette(
       context,
@@ -563,9 +567,8 @@ class _SidebarState extends State<_Sidebar> {
       color: AppColors.canvas, // same surface as the chat canvas
       child: Column(children: [
         SizedBox(height: kMacOS ? kMacTitlebar + 6 : 6), // clear the window controls
-        _navRow('edit', 'New chat', onTap: hasClient ? widget.onNewSession : null),
         _navRow('search', 'Search', onTap: hasClient ? _openSearch : null),
-        _navRow('folder', 'Files', onTap: hasClient ? _openFiles : null),
+        _navRow('folder', 'Files', onTap: hasClient ? widget.onNewSession : null),
         const SizedBox(height: 4),
         Expanded(
           child: !hasClient

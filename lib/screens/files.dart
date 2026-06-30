@@ -23,7 +23,8 @@ class FileExplorer extends StatefulWidget {
   final String title;
   final String? start; // initial folder (null = the daemon's home dir)
   final VoidCallback? onClose; // dismiss when hosted in a desktop panel
-  const FileExplorer({super.key, required this.client, this.title = 'Files', this.start, this.onClose});
+  final void Function(String folder)? onNewChat; // start a chat in the current folder
+  const FileExplorer({super.key, required this.client, this.title = 'Files', this.start, this.onClose, this.onNewChat});
   @override
   State<FileExplorer> createState() => _FileExplorerState();
 }
@@ -170,6 +171,7 @@ class _FileExplorerState extends State<FileExplorer> {
                         IconBtn('x', tooltip: 'Cancel', onTap: _exitSelect),
                       ]
                     : [
+                        if (listing != null && widget.onNewChat != null) IconBtn('edit', tooltip: 'New chat here', onTap: () => widget.onNewChat!(listing.path)),
                         if (listing != null) IconBtn('git-branch', tooltip: 'Git', onTap: () => _openGit(listing.path)),
                         if (listing != null) IconBtn('upload', tooltip: 'Upload files', onTap: _busy != null ? null : () => _upload(listing.path)),
                         if (listing != null) IconBtn('folder-plus', tooltip: 'New folder', onTap: _busy != null ? null : () => _newFolder(listing.path)),
