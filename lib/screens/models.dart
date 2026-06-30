@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../models.dart';
+import '../panel.dart';
 import '../platform.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -36,8 +37,10 @@ class _ModelsScreenState extends State<ModelsScreen> {
   }
 
   Future<void> _edit(ModelProfile? p) async {
-    final saved = await Navigator.push<bool>(
-        context, MaterialPageRoute(builder: (_) => ModelEditorScreen(client: widget.client, existing: p)));
+    final saved = await presentScreen<bool>(
+      context,
+      builder: (_, close) => ModelEditorScreen(client: widget.client, existing: p, onClose: close),
+    );
     if (saved == true) _refresh();
   }
 

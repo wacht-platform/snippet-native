@@ -20,7 +20,9 @@ bool _defaultImages(String p) => p == 'anthropic' || p == 'gemini' || p == 'open
 class ModelEditorScreen extends StatefulWidget {
   final DaemonClient client;
   final ModelProfile? existing;
-  const ModelEditorScreen({super.key, required this.client, this.existing});
+  /// Dismiss when hosted in a responsive panel (desktop drawer / phone full-screen).
+  final VoidCallback? onClose;
+  const ModelEditorScreen({super.key, required this.client, this.existing, this.onClose});
   @override
   State<ModelEditorScreen> createState() => _ModelEditorScreenState();
 }
@@ -101,7 +103,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
       body: SafeArea(
         bottom: false,
         child: Column(children: [
-          SnAppBar(title: _isEdit ? 'Edit model' : 'Add model', onBack: () => Navigator.pop(context)),
+          SnAppBar(title: _isEdit ? 'Edit model' : 'Add model', onBack: widget.onClose ?? () => Navigator.pop(context)),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
@@ -177,7 +179,7 @@ class _ModelEditorScreenState extends State<ModelEditorScreen> {
             padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom),
             decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
             child: Row(children: [
-              Btn('Cancel', variant: BtnVariant.ghost, onTap: () => Navigator.pop(context)),
+              Btn('Cancel', variant: BtnVariant.ghost, onTap: widget.onClose ?? () => Navigator.pop(context)),
               const SizedBox(width: 8),
               Expanded(child: Btn(_busy ? 'Saving…' : 'Save', full: true, disabled: _busy || _model.text.trim().isEmpty, onTap: _save)),
             ]),
