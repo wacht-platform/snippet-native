@@ -4,44 +4,44 @@ import 'package:iconsax_plus/iconsax_plus.dart';
 
 /// snippet — Wacht design system (dark), one electric-blue accent.
 /// Resolved dark-theme tokens from the design handoff.
-// Warm-neutral dark with a magenta/fuchsia accent. OKLCH tokens → sRGB.
+// Zinc dark with an amber/gold accent. OKLCH tokens → sRGB.
 class AppColors {
-  static const bg = Color(0xFF0C0C09); // --background (sidebar / shell)
-  static const canvas = Color(0xFF26251D); // chat reading area (lighter than bg)
-  static const surface1 = Color(0xFF1D1D16); // --card / --popover / --sidebar
-  static const surface2 = Color(0xFF2B2B22); // --muted (inputs, chips)
-  static const surface3 = Color(0xFF3A3A30); // pressed / hover raise
+  static const bg = Color(0xFF09090B); // --background (sidebar / shell)
+  static const canvas = Color(0xFF222226); // chat reading area (lighter than bg)
+  static const surface1 = Color(0xFF18181B); // --card / --popover / --sidebar
+  static const surface2 = Color(0xFF27272A); // --muted (inputs, chips)
+  static const surface3 = Color(0xFF37373B); // pressed / hover raise
 
-  static const fg1 = Color(0xFFFBFBF9); // --foreground
-  static const fg2 = Color(0xFFD2D2C9); // secondary text, icons
-  static const fg3 = Color(0xFFABAB9C); // --muted-foreground
-  static const fg4 = Color(0xFF818172); // faint icons, disabled
+  static const fg1 = Color(0xFFFAFAFA); // --foreground
+  static const fg2 = Color(0xFFCACAD1); // secondary text, icons
+  static const fg3 = Color(0xFF9F9FA9); // --muted-foreground
+  static const fg4 = Color(0xFF797981); // faint icons, disabled
 
   static const border = Color(0x1AFFFFFF); // --border (white 10%)
   static const border2 = Color(0x26FFFFFF); // --input (white 15%)
 
-  // Magenta accent (bright for a dark UI): fills carry dark text.
-  static const accent = Color(0xFFCB41D8);
-  static const accentHover = Color(0xFFE05FED);
-  static const accentFg = Color(0xFF210D23);
-  static const accentBg = Color(0x28CB41D8); // ~16%
-  static const accentLine = Color(0x66CB41D8); // 40%
-  static const accentRing = Color(0x4DCB41D8); // 30%
+  // Amber/gold accent (bright for a dark UI): fills carry dark text.
+  static const accent = Color(0xFFFE9A00);
+  static const accentHover = Color(0xFFFFB224);
+  static const accentFg = Color(0xFF461901);
+  static const accentBg = Color(0x28FE9A00); // ~16%
+  static const accentLine = Color(0x66FE9A00); // 40%
+  static const accentRing = Color(0x4DFE9A00); // 30%
 
-  // Status (on-theme: magenta, no green); red for errors.
-  static const ok = Color(0xFFCB41D8);
-  static const okBg = Color(0x28CB41D8);
-  static const run = Color(0xFFE05FED);
-  static const runBg = Color(0x26E05FED);
+  // Status (on-theme: amber, no green); red for errors.
+  static const ok = Color(0xFFFE9A00);
+  static const okBg = Color(0x28FE9A00);
+  static const run = Color(0xFFFFB224);
+  static const runBg = Color(0x26FFB224);
   static const danger = Color(0xFFFF6467); // --destructive
   static const dangerBg = Color(0x26FF6467);
 
-  // diff line tints — additions magenta (no green), deletions red.
-  static const diffAddBg = Color(0x20CB41D8);
+  // diff line tints — additions amber (no green), deletions red.
+  static const diffAddBg = Color(0x20FE9A00);
   static const diffDelBg = Color(0x20FF6467);
-  static const diffAddFg = Color(0xFFED9BF4);
+  static const diffAddFg = Color(0xFFFFC667);
   static const diffDelFg = Color(0xFFFF9B98);
-  static const diffGutter = Color(0xFF52524A);
+  static const diffGutter = Color(0xFF52525B);
 }
 
 // Rounder throughout (soft, modern).
