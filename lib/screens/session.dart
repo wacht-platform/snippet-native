@@ -9,6 +9,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../api.dart';
 import '../models.dart';
 import '../notifications.dart';
+import '../platform.dart';
 import '../theme.dart';
 import '../tool_views.dart';
 import '../panel.dart';
@@ -385,7 +386,61 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   }
 
   Widget _menu(HarnessState? s) {
-    return IconBtn('more-vertical', tooltip: 'Actions', onTap: () => _openActions(s));
+    final view = View.of(context);
+    final desktop = view.physicalSize.width / view.devicePixelRatio >= kDesktopBreakpoint;
+    if (!desktop) {
+      return IconBtn('more-vertical', tooltip: 'Actions', onTap: () => _openActions(s));
+    }
+    return PopupMenuButton<VoidCallback>(
+      color: AppColors.surface2,
+      elevation: 8,
+      constraints: const BoxConstraints(minWidth: 220, maxWidth: 260),
+      menuPadding: const EdgeInsets.symmetric(vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.md), side: const BorderSide(color: AppColors.border2)),
+      icon: const AppIcon('more-vertical', color: AppColors.fg2),
+      tooltip: 'Actions',
+      onSelected: (fn) => fn(),
+      itemBuilder: (_) => _actionItems(s),
+    );
+  }
+
+  List<PopupMenuEntry<VoidCallback>> _actionItems(HarnessState? s) {
+    final manual = (s?.approvalMode ?? 'auto') == 'manual';
+    final ws = s?.workspace ?? '';
+    PopupMenuItem<VoidCallback> item(String icon, String label, VoidCallback fn, {String? value}) =>
+        PopupMenuItem<VoidCallback>(
+          value: fn,
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(children: [
+            AppIcon(icon, size: 14, color: AppColors.fg2),
+            const SizedBox(width: 10),
+            Expanded(child: Text(label, style: sans(12.5, color: AppColors.fg1))),
+            if (value != null) Text(value, style: mono(11, color: AppColors.fg4)),
+          ]),
+        );
+    return [
+      item('cpu', 'Switch model', _switchModel, value: _modelLabel),
+      item('edit', 'Rename session', _renameCurrent),
+      item('shield', 'Approval mode', () {
+        _send({'kind': 'set_mode', 'value': manual ? 'auto' : 'manual'});
+        _toast(manual ? 'Approval: auto' : 'Approval: ask');
+      }, value: manual ? 'Ask' : 'Auto'),
+      const PopupMenuDivider(),
+      item('git-branch', 'Git', () => presentScreen(context, builder: (_, close) => GitScreen(client: widget.client, sessionId: widget.sessionId, onClose: close))),
+      item('folder', 'Open files', () {
+        final name = ws.split('/').where((p) => p.isNotEmpty).lastOrNull ?? 'Files';
+        presentScreen(context, builder: (_, close) => FileExplorer(client: widget.client, title: name, start: ws.isEmpty ? null : ws, onClose: close));
+      }),
+      item('terminal', 'Run command', _showExec),
+      const PopupMenuDivider(),
+      item('minimize', 'Compact history', () {
+        _send({'kind': 'compact'});
+        _toast('Compacting history');
+      }),
+      item('history', 'Checkpoints', _showCheckpoints),
+      item('activity', 'Usage', _showUsage),
+    ];
   }
 
   void _openActions(HarnessState? s) {
