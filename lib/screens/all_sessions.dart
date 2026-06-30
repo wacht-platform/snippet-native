@@ -116,12 +116,6 @@ class _AllSessionsScreenState extends State<AllSessionsScreen> {
     return '${(d.inDays / 30).floor()}mo';
   }
 
-  String _pill(String s) => switch (s) {
-        'running' || 'waiting_for_input' => 'running',
-        'failed' || 'error' => 'error',
-        _ => 'idle',
-      };
-
   String _folderName(String folder) => folder.split('/').where((p) => p.isNotEmpty).lastOrNull ?? (folder.isEmpty ? '—' : folder);
 
   @override
@@ -164,51 +158,82 @@ class _AllSessionsScreenState extends State<AllSessionsScreen> {
     );
   }
 
+  // Each machine is a grouped section card: header + session rows.
   List<Widget> _machineGroup(Instance inst) {
     final sessions = _byUrl[inst.url] ?? const [];
     return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(4, 12, 0, 6),
-        child: Row(children: [
-          const AppIcon('cpu', size: 13, color: AppColors.fg3),
-          const SizedBox(width: 8),
-          Expanded(child: Text(inst.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(12, color: AppColors.fg2))),
-          IconBtn('plus', size: 28, iconSize: 16, tooltip: 'New session', onTap: () => _newSession(inst)),
+      Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppColors.surface1,
+          borderRadius: BorderRadius.circular(R.card),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+            child: Row(children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: AppColors.surface2, borderRadius: BorderRadius.circular(R.sm)),
+                child: const AppIcon('cpu', size: 14, color: AppColors.fg2),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(inst.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13.5, color: AppColors.fg1)),
+                  const SizedBox(height: 1),
+                  Text(sessions.isEmpty ? 'No sessions' : '${sessions.length} session${sessions.length == 1 ? '' : 's'}', style: mono(10.5, color: AppColors.fg4)),
+                ]),
+              ),
+              IconBtn('plus', size: 32, iconSize: 18, tooltip: 'New session', onTap: () => _newSession(inst)),
+            ]),
+          ),
+          if (sessions.isNotEmpty) const Divider(height: 1, thickness: 1, color: AppColors.border),
+          for (var i = 0; i < sessions.length; i++) ...[
+            _row(inst, sessions[i]),
+            if (i < sessions.length - 1)
+              Container(height: 1, margin: const EdgeInsets.only(left: 14), color: AppColors.border),
+          ],
         ]),
       ),
-      if (sessions.isEmpty)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
-          child: Text('No sessions yet', style: sans(12, color: AppColors.fg4)),
-        )
-      else
-        ...sessions.map((s) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: _row(inst, s),
-            )),
     ];
   }
 
   Widget _row(Instance inst, SessionInfo s) {
-    return AppCard(
-      onTap: () => _open(inst, s),
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(s.title.isEmpty ? '(untitled)' : s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(12.5, height: 1.25, color: AppColors.fg1)),
-            const SizedBox(height: 3),
-            Row(children: [
-              const AppIcon('folder', size: 10, color: AppColors.fg4),
-              const SizedBox(width: 5),
-              Flexible(child: Text(_folderName(s.folder), maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(10, color: AppColors.fg3))),
-              if (_ago(s.lastActive).isNotEmpty) Text('  ·  ${_ago(s.lastActive)}', style: mono(10, color: AppColors.fg4)),
-            ]),
+    final running = s.status == 'running' || s.status == 'waiting_for_input';
+    final failed = s.status == 'failed' || s.status == 'error';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _open(inst, s),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+          child: Row(children: [
+            if (running || failed) ...[
+              Container(width: 6, height: 6, decoration: BoxDecoration(color: failed ? AppColors.danger : AppColors.accent, shape: BoxShape.circle)),
+              const SizedBox(width: 9),
+            ],
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(s.title.isEmpty ? '(untitled)' : s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(12.5, height: 1.25, color: AppColors.fg1)),
+                const SizedBox(height: 3),
+                Row(children: [
+                  const AppIcon('folder', size: 10, color: AppColors.fg4),
+                  const SizedBox(width: 5),
+                  Flexible(child: Text(_folderName(s.folder), maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(10, color: AppColors.fg3))),
+                  if (_ago(s.lastActive).isNotEmpty) Text('  ·  ${_ago(s.lastActive)}', style: mono(10, color: AppColors.fg4)),
+                ]),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            const AppIcon('chevron-right', size: 15, color: AppColors.fg4),
           ]),
         ),
-        const SizedBox(width: 6),
-        StatusPill(status: _pill(s.status)),
-      ]),
+      ),
     );
   }
 }

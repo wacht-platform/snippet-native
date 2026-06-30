@@ -126,7 +126,12 @@ class _DesktopShellState extends State<DesktopShell> {
             shape: const RoundedRectangleBorder(),
             child: SafeArea(child: _sidebar(onAfterPick: () => _scaffoldKey.currentState?.closeDrawer())),
           ),
-          body: SafeArea(child: _mainPane(onMenu: () => _scaffoldKey.currentState?.openDrawer())),
+          body: SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(top: kMacOS ? kMacTitlebar : 0),
+              child: _mainPane(onMenu: () => _scaffoldKey.currentState?.openDrawer()),
+            ),
+          ),
         );
       }
       return Scaffold(
@@ -433,6 +438,7 @@ class _SidebarState extends State<_Sidebar> {
     return Container(
       color: AppColors.surface1, // subtle panel shade distinct from the main pane
       child: Column(children: [
+        if (kMacOS) const SizedBox(height: kMacTitlebar), // clear the window controls
         const SizedBox(height: 6),
         _navRow('edit', 'New chat', onTap: hasClient ? _newSession : null),
         _navRow('search', 'Search', onTap: hasClient ? _openSearch : null),

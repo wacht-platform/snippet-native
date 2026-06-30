@@ -347,7 +347,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           _statusStrip(s, running),
           if (_connError != null) _disconnectedBanner(),
           Expanded(
-            child: s == null
+            child: _centerWide(s == null
                 ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)))
                 : NotificationListener<ScrollNotification>(
                     onNotification: _onScroll,
@@ -370,9 +370,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                       else if (waiting && s.pendingQuestion != null) ...[const SizedBox(height: 12), _QuestionBar(question: s.pendingQuestion!, onSend: _send)],
                     ],
                   ),
-                ),
+                )),
           ),
-          _inputBar(running),
+          _centerWide(_inputBar(running)),
         ]),
       ),
     );
@@ -389,6 +389,12 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       if (mounted) _toast('$e');
     }
   }
+
+  // On desktop, keep chat content to a comfortable reading width (centered),
+  // rather than stretching across the whole pane.
+  Widget _centerWide(Widget child) => widget.embedded
+      ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: child))
+      : child;
 
   // Compact, desktop-native toolbar for the embedded shell (distinct from the
   // mobile SnAppBar): slim height, inline muted path, hover-sized controls.

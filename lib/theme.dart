@@ -43,13 +43,13 @@ class AppColors {
   static const diffGutter = Color(0xFF52525B);
 }
 
-// --radius 0.45rem ≈ 7px.
+// Rounder throughout (soft, modern).
 class R {
-  static const card = 8.0;
-  static const md = 7.0; // buttons, inputs, icon buttons
-  static const sm = 5.0; // menu items, list rows
-  static const xs = 4.0; // inner chips
-  static const sheetTop = 14.0;
+  static const card = 16.0;
+  static const md = 12.0; // buttons, inputs, icon buttons
+  static const sm = 9.0; // menu items, list rows
+  static const xs = 7.0; // inner chips
+  static const sheetTop = 22.0;
 }
 
 /// Type helpers — Geist (sans) + Geist Mono, per the handoff recipes.
@@ -158,7 +158,7 @@ IconData iconFor(String name) {
     case 'stop':
       return IconsaxPlusLinear.stop;
     case 'send':
-      return IconsaxPlusLinear.send_2;
+      return IconsaxPlusLinear.arrow_up_3;
     case 'shield':
       return IconsaxPlusLinear.shield_tick;
     case 'folder':
