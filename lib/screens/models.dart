@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../models.dart';
+import '../platform.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'model_editor.dart';
@@ -54,39 +55,22 @@ class _ModelsScreenState extends State<ModelsScreen> {
                   return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)));
                 }
                 final profiles = snap.data?.profiles ?? const [];
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                final list = ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
                   children: [
+                    const SectionLabel('Model profiles'),
+                    const SizedBox(height: 10),
                     if (profiles.isEmpty) ...[
                       const EmptyState(icon: 'cpu', title: 'No model configured', body: 'Add a model profile with an API key before starting a session.'),
                       const SizedBox(height: 10),
                     ],
-                    ...profiles.map((p) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: AppCard(
-                            onTap: p.hasKey ? () => _run(() => widget.client.setActiveProfile(p.name), 'activate') : null,
-                            child: Row(children: [
-                              _Radio(on: p.active, disabled: !p.hasKey),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Row(children: [
-                                    Flexible(child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(14, weight: FontWeight.w600, color: AppColors.fg1))),
-                                    if (!p.hasKey) ...[const SizedBox(width: 8), const WarnChip()],
-                                    if (p.active) ...[const SizedBox(width: 8), Text('ACTIVE', style: sans(10, weight: FontWeight.w500, spacing: 0.4, color: AppColors.accent))],
-                                  ]),
-                                  const SizedBox(height: 4),
-                                  Text('${p.provider} · ${p.model}', maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3)),
-                                ]),
-                              ),
-                              IconBtn('edit', size: 34, iconSize: 16, onTap: () => _edit(p)),
-                              IconBtn('trash', size: 34, iconSize: 16, onTap: () => _run(() => widget.client.deleteProfile(p.name), 'delete')),
-                            ]),
-                          ),
-                        )),
+                    ...profiles.map(_profileCard),
+                    const SizedBox(height: 2),
                     AddCard(label: 'Add model', onTap: () => _edit(null)),
                   ],
                 );
+                // Don't stretch full-width on desktop — keep a readable column.
+                return kMobile ? list : Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 680), child: list));
               },
             ),
           ),
@@ -94,26 +78,46 @@ class _ModelsScreenState extends State<ModelsScreen> {
       ),
     );
   }
-}
 
-class _Radio extends StatelessWidget {
-  final bool on, disabled;
-  const _Radio({required this.on, required this.disabled});
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: disabled ? 0.4 : 1,
-      child: Container(
-        width: 20,
-        height: 20,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: on ? AppColors.accent : AppColors.border2, width: 2),
-        ),
-        child: on
-            ? Center(child: Container(width: 10, height: 10, decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle)))
-            : null,
+  Widget _profileCard(ModelProfile p) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppCard(
+        onTap: p.hasKey ? () => _run(() => widget.client.setActiveProfile(p.name), 'activate') : null,
+        padding: const EdgeInsets.fromLTRB(12, 11, 6, 11),
+        child: Row(children: [
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: p.active ? AppColors.accentBg : AppColors.surface2,
+              borderRadius: BorderRadius.circular(R.md),
+            ),
+            child: AppIcon('cpu', size: 18, color: p.active ? AppColors.accent : AppColors.fg3),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(14, color: AppColors.fg1))),
+                if (p.active) ...[const SizedBox(width: 8), _activeChip()],
+                if (!p.hasKey) ...[const SizedBox(width: 8), const WarnChip()],
+              ]),
+              const SizedBox(height: 4),
+              Text('${p.provider} · ${p.model}', maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3)),
+            ]),
+          ),
+          IconBtn('edit', size: 34, iconSize: 16, onTap: () => _edit(p)),
+          IconBtn('trash', size: 34, iconSize: 16, onTap: () => _run(() => widget.client.deleteProfile(p.name), 'delete')),
+        ]),
       ),
     );
   }
+
+  Widget _activeChip() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(color: AppColors.accentBg, borderRadius: BorderRadius.circular(R.xs)),
+        child: Text('ACTIVE', style: sans(9.5, spacing: 0.5, color: AppColors.accent)),
+      );
 }

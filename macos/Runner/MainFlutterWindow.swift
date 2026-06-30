@@ -14,6 +14,14 @@ class MainFlutterWindow: NSWindow {
     self.minSize = NSSize(width: 480, height: 520)
     self.title = "snippet"
 
+    // Bring our own title bar: hide the native one and let Flutter draw the top
+    // toolbar full-bleed under the (kept) traffic-light controls. Dragging any
+    // empty background area moves the window — no extra plugin needed.
+    self.titlebarAppearsTransparent = true
+    self.titleVisibility = .hidden
+    self.styleMask.insert(.fullSizeContentView)
+    self.isMovableByWindowBackground = true
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()

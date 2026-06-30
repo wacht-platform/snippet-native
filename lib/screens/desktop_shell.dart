@@ -765,7 +765,16 @@ class _SettingsPanelState extends State<_SettingsPanel> {
         ),
         _notifBusy
             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3))
-            : Switch(value: _notif, activeThumbColor: AppColors.accentFg, activeTrackColor: AppColors.accent, onChanged: _toggleNotif),
+            : Transform.scale(
+                scale: 0.78,
+                child: Switch(
+                  value: _notif,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  activeThumbColor: AppColors.accentFg,
+                  activeTrackColor: AppColors.accent,
+                  onChanged: _toggleNotif,
+                ),
+              ),
       ]),
     );
   }
