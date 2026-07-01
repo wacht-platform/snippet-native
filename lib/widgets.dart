@@ -455,34 +455,26 @@ class Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = hideAttachmentMarkers(text);
-    if (mine) {
-      return IntrinsicHeight(
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Container(width: 2, color: AppColors.accentLine),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('YOU', style: sans(10, color: AppColors.fg1, spacing: 0.8)),
-              const SizedBox(height: 4),
-              SelectableText(shown, style: sans(16, height: 1.5, color: AppColors.fg2)),
-              _CopyButton(text: shown),
-            ]),
-          ),
-        ]),
-      );
-    }
+    // Clean, Claude-style: a readable sender header (no accent bar / outline),
+    // differentiated by name + colour rather than a border.
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('SNIPPET', style: sans(10, color: AppColors.fg3, spacing: 0.8)),
-      const SizedBox(height: 5),
-      // SelectionArea so a drag selects across all markdown blocks at once.
-      SelectionArea(
-        child: MarkdownBody(
-          data: shown,
-          selectable: false,
-          styleSheet: markdownStyle(context),
-          onTapLink: (txt, href, title) => openMarkdownLink(href),
-        ),
+      Text(
+        mine ? 'You' : 'Snippet',
+        style: sans(13.5, weight: FontWeight.w600, color: mine ? AppColors.fg2 : AppColors.accent),
       ),
+      const SizedBox(height: 6),
+      if (mine)
+        SelectableText(shown, style: sans(16, height: 1.5, color: AppColors.fg1))
+      else
+        // SelectionArea so a drag selects across all markdown blocks at once.
+        SelectionArea(
+          child: MarkdownBody(
+            data: shown,
+            selectable: false,
+            styleSheet: markdownStyle(context),
+            onTapLink: (txt, href, title) => openMarkdownLink(href),
+          ),
+        ),
       _CopyButton(text: shown),
     ]);
   }
