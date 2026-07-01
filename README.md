@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="https://raw.githubusercontent.com/wacht-platform/snippet-service/main/snippet-mascot/png/snip-mascot-256.png" alt="snippet mascot" width="132" height="132" />
+
 # snippet — mobile & desktop
 
 **Control your terminal coding agent from your phone or your Mac.**
