@@ -538,7 +538,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   // mobile SnAppBar): slim height, inline muted path, hover-sized controls.
   Widget _desktopBar(HarnessState? s, bool running) {
     return Container(
-      height: 44,
+      height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: const BoxDecoration(
         color: AppColors.canvas,
@@ -553,7 +553,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         ] else
           const SizedBox(width: 2),
         Expanded(
-          child: Text(_title.isEmpty ? 'session' : _title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(14, weight: FontWeight.w600, color: AppColors.fg1)),
+          child: Text(_title.isEmpty ? 'session' : _title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(16.5, weight: FontWeight.w600, color: AppColors.fg1)),
         ),
         if (running) IconBtn('stop', size: 30, iconSize: 16, tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
         _menu(s),
@@ -692,9 +692,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   Widget _statusStrip(HarnessState? s, bool running) {
     final chips = <Widget>[
       Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 6, height: 6, decoration: BoxDecoration(color: running ? AppColors.run : AppColors.fg2, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text(running ? 'Running' : 'Idle', style: sans(11, weight: FontWeight.w500, color: running ? AppColors.run : AppColors.fg2)),
+        Container(width: 7, height: 7, decoration: BoxDecoration(color: running ? AppColors.run : AppColors.fg2, shape: BoxShape.circle)),
+        const SizedBox(width: 7),
+        Text(running ? 'Running' : 'Idle', style: sans(12.5, weight: FontWeight.w600, color: running ? AppColors.run : AppColors.fg2)),
       ]),
     ];
     if (s != null && s.workspace.isNotEmpty) {
@@ -711,7 +711,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       if (_isCodex && rp != null) chips.add(_StatMeta(icon: 'clipboard', label: '${rateWindowLabel(rp.windowMinutes)} · ${rp.leftPercent.round()}%', tone: 'run'));
     }
     return Container(
-      height: 38,
+      height: 44,
       decoration: const BoxDecoration(color: AppColors.surface1, border: Border(bottom: BorderSide(color: AppColors.border))),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -1173,9 +1173,9 @@ class _StatMeta extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = tone == 'accent' ? AppColors.accent : tone == 'run' ? AppColors.run : AppColors.fg2;
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      AppIcon(icon, size: 12, color: tone == 'default' ? AppColors.fg4 : c),
-      const SizedBox(width: 5),
-      Text(label, style: mono(11, color: c)),
+      AppIcon(icon, size: 14, color: tone == 'default' ? AppColors.fg4 : c),
+      const SizedBox(width: 6),
+      Text(label, style: mono(12.5, color: c)),
     ]);
   }
 }

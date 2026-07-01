@@ -704,7 +704,7 @@ class SnAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 54,
+      height: 58,
       padding: const EdgeInsets.fromLTRB(6, 0, 8, 0),
       decoration: const BoxDecoration(
         color: AppColors.bg,
@@ -715,7 +715,7 @@ class SnAppBar extends StatelessWidget {
         const SizedBox(width: 4),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(16, weight: FontWeight.w600, spacing: -0.16, color: AppColors.fg1)),
+            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(18, weight: FontWeight.w600, spacing: -0.16, color: AppColors.fg1)),
             if (subtitle != null)
               Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3)),
           ]),
