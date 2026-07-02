@@ -8,7 +8,7 @@ import 'theme.dart';
 /// Shared CodeEditor style — the app's code font (matches `mono` typography),
 /// app colors, and syntax highlighting by file extension. Used by both the
 /// editor and the read-only file viewer so they look identical.
-CodeEditorStyle codeEditorStyle(String filename, {Color background = AppColors.canvas}) => CodeEditorStyle(
+CodeEditorStyle codeEditorStyle(String filename, {Color? background}) => CodeEditorStyle(
       fontSize: 13,
       fontHeight: 1.5,
       fontFamily: monoFamily,

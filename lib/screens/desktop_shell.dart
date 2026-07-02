@@ -284,9 +284,9 @@ class _DesktopShellState extends State<DesktopShell> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        backgroundColor: AppColors.canvas,
-        body: Center(
+      return Scaffold(
+        backgroundColor: readingBg,
+        body: const Center(
             child: SizedBox(
                 width: 22,
                 height: 22,
@@ -311,7 +311,7 @@ class _DesktopShellState extends State<DesktopShell> {
           },
           child: Scaffold(
             key: _scaffoldKey,
-            backgroundColor: AppColors.canvas,
+            backgroundColor: readingBg,
             onDrawerChanged: (open) => setState(() => _drawerOpen = open),
             // Wider left-edge swipe target on phones so the sidebar is easy to pull open.
             drawerEdgeDragWidth: kMobile ? 56 : 24,
@@ -339,7 +339,7 @@ class _DesktopShellState extends State<DesktopShell> {
       // Wide: only the sidebar (top-left) sits under the traffic lights; the chat
       // toolbar fills the title-bar row at the top — no dead strip.
       return Scaffold(
-        backgroundColor: AppColors.canvas,
+        backgroundColor: readingBg,
         body: SafeArea(
           child: Row(children: [
             SizedBox(width: 300, child: _sidebar()),

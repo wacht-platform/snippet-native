@@ -349,7 +349,7 @@ class _DiffViewState extends State<_DiffView> {
   Widget build(BuildContext context) {
     final name = widget.file.split('/').last;
     return Scaffold(
-      backgroundColor: AppColors.canvas,
+      backgroundColor: readingBg,
       body: SafeArea(
         bottom: false,
         child: Column(children: [

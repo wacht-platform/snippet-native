@@ -402,7 +402,7 @@ class _FileViewerState extends State<FileViewer> {
   Widget build(BuildContext context) {
     final f = _f;
     return Scaffold(
-      backgroundColor: AppColors.canvas,
+      backgroundColor: readingBg,
       body: SafeArea(
         bottom: false,
         child: Column(children: [

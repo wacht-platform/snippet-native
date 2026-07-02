@@ -505,7 +505,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     final events = s?.events ?? const [];
     final items = _transcript(events);
     final scaffold = Scaffold(
-      backgroundColor: AppColors.canvas,
+      backgroundColor: readingBg,
       body: SafeArea(
         bottom: false,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -610,9 +610,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     return Container(
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: const BoxDecoration(
-        color: AppColors.canvas,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+      decoration: BoxDecoration(
+        color: readingBg,
+        border: const Border(bottom: BorderSide(color: AppColors.border)),
       ),
       // Full-width toolbar: title (+path) takes all free space so the actions
       // are pushed to the extreme right.

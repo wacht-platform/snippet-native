@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
 
+import 'platform.dart';
+
 /// snippet — Wacht design system (dark), one coral accent.
 /// Resolved dark-theme tokens from the design handoff.
 // Warm charcoal with a coral/terracotta accent.
@@ -43,6 +45,11 @@ class AppColors {
   static const diffDelFg = Color(0xFFFF9B98);
   static const diffGutter = Color(0xFF52525B);
 }
+
+/// Reading/content surfaces (chat, editor, file viewer, diff). Phones use ONE
+/// background everywhere (the darker `bg` — no sidebar/canvas split on a small
+/// screen); desktop keeps the lighter canvas against the darker sidebar.
+Color get readingBg => kMobile ? AppColors.bg : AppColors.canvas;
 
 // Rounder throughout (soft, modern).
 class R {
