@@ -609,11 +609,8 @@ class _SidebarState extends State<_Sidebar> {
                           style: sans(12.5, color: AppColors.fg4))))
               : _sessionList(),
         ),
-        // Mobile keeps the Settings footer; desktop has the gear in the header.
-        if (kMobile) ...[
-          const Divider(height: 1, thickness: 1, color: AppColors.border),
-          _footer(),
-        ],
+        // Settings lives in the machine header (gear, top right) on both
+        // form factors.
       ]),
     );
   }
@@ -1020,11 +1017,6 @@ class _SidebarState extends State<_Sidebar> {
     }
   }
 
-  Widget _footer() {
-    return _navRow('settings', 'Settings',
-        onTap: widget.client != null ? _openSettings : null);
-  }
-
   // ---- machines ----
 
   /// The sidebar header IS the machine switcher: active machine label in
@@ -1086,12 +1078,11 @@ class _SidebarState extends State<_Sidebar> {
                 tooltip: 'Refresh',
                 onTap:
                     hasClient && !_loading ? widget.onRefreshSessions : null),
-            if (!kMobile)
-              IconBtn('settings',
-                  size: 30,
-                  iconSize: 15,
-                  tooltip: 'Settings',
-                  onTap: hasClient ? _openSettings : null),
+            IconBtn('settings',
+                size: kMobile ? 38 : 30,
+                iconSize: kMobile ? 19 : 15,
+                tooltip: 'Settings',
+                onTap: hasClient ? _openSettings : null),
           ]),
         ),
       ),
