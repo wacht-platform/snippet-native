@@ -194,11 +194,13 @@ class _DesktopShellState extends State<DesktopShell> {
     });
   }
 
-  // Full-screen on phones (QR scan), a compact centered modal on desktop
-  // (paste; Esc dismisses via the barrier).
+  // Full-screen on phones (QR scan); a compact natural-height dialog on
+  // desktop (paste; Esc dismisses, Enter submits).
   Future<void> _addInstanceFlow() async {
-    final inst = await showModal<Instance>(context, const AddInstanceScreen(),
-        width: 480, height: 520);
+    final inst = kMobile
+        ? await showModal<Instance>(context, const AddInstanceScreen(),
+            width: 480, height: 520)
+        : await showAddMachineDialog(context);
     if (inst != null) await _onInstanceAdded(inst);
   }
 
@@ -607,8 +609,11 @@ class _SidebarState extends State<_Sidebar> {
                           style: sans(12.5, color: AppColors.fg4))))
               : _sessionList(),
         ),
-        const Divider(height: 1, thickness: 1, color: AppColors.border),
-        _footer(),
+        // Mobile keeps the Settings footer; desktop has the gear in the header.
+        if (kMobile) ...[
+          const Divider(height: 1, thickness: 1, color: AppColors.border),
+          _footer(),
+        ],
       ]),
     );
   }
@@ -622,6 +627,32 @@ class _SidebarState extends State<_Sidebar> {
 
   Widget _navRow(String icon, String label,
       {String? sub, VoidCallback? onTap, bool active = false}) {
+    // Desktop: flat rounded rows matching the thread list (no sub line).
+    if (!kMobile) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 1),
+        child: Material(
+          color: active ? AppColors.accentBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(R.sm),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(R.sm),
+            onTap: onTap,
+            child: Opacity(
+              opacity: onTap == null ? 0.45 : 1,
+              child: Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(children: [
+                  AppIcon(icon, size: 15, color: AppColors.fg3),
+                  const SizedBox(width: 10),
+                  Text(label, style: sans(12.5, color: AppColors.fg1)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Material(
       color: active ? AppColors.accentBg : Colors.transparent,
       child: InkWell(
@@ -639,9 +670,7 @@ class _SidebarState extends State<_Sidebar> {
                     children: [
                       Text(label, style: sans(_navText, color: AppColors.fg1)),
                       if (sub != null)
-                        Text(sub,
-                            style: sans(kMobile ? 12 : 10.5,
-                                color: AppColors.fg4)),
+                        Text(sub, style: sans(12, color: AppColors.fg4)),
                     ]),
               ),
             ]),
@@ -698,12 +727,26 @@ class _SidebarState extends State<_Sidebar> {
       final b = _bucket(s.lastActive);
       if (b != bucket) {
         bucket = b;
-        children.add(Padding(
-            padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-            child: SectionLabel(b)));
+        // Quieter, smaller bucket labels on desktop (flat thread list).
+        children.add(kMobile
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+                child: SectionLabel(b))
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(10, 16, 4, 4),
+                child: Text(b,
+                    style: sans(10.5,
+                        weight: FontWeight.w500,
+                        spacing: 0.4,
+                        color: AppColors.fg4))));
       }
-      children.add(Padding(
-          padding: const EdgeInsets.only(bottom: 8), child: _sessionCard(s)));
+      children.add(kMobile
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _sessionCard(s))
+          : Padding(
+              padding: const EdgeInsets.only(bottom: 1),
+              child: _sessionRow(s)));
     }
     if (list.isEmpty) {
       children.add(Padding(
@@ -713,7 +756,8 @@ class _SidebarState extends State<_Sidebar> {
               style: sans(12.5, color: AppColors.fg4))));
     }
     return ListView(
-        padding: const EdgeInsets.fromLTRB(12, 2, 12, 12), children: children);
+        padding: EdgeInsets.fromLTRB(kMobile ? 12 : 8, 2, kMobile ? 12 : 8, 12),
+        children: children);
   }
 
   Widget _filterChips(List<SessionInfo> all) {
@@ -755,6 +799,49 @@ class _SidebarState extends State<_Sidebar> {
               style: sans(12.5,
                   weight: FontWeight.w500,
                   color: sel ? AppColors.bg : AppColors.fg3)),
+        ),
+      ),
+    );
+  }
+
+  // Desktop: flat native thread row — no card chrome, rounded hover, a status
+  // dot only when it means something (needs input / running).
+  Widget _sessionRow(SessionInfo s) {
+    final selected = s.id == widget.selectedSessionId;
+    final waiting = s.status == 'waiting_for_input';
+    final running = s.status == 'running';
+    return Material(
+      color: selected ? AppColors.surface2 : Colors.transparent,
+      borderRadius: BorderRadius.circular(R.sm),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(R.sm),
+        onTap: () => widget.onOpenSession(s.id, s.title, s.profile),
+        onLongPress: () => _sessionActions(s),
+        onSecondaryTap: () => _sessionActions(s),
+        child: Container(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Row(children: [
+            if (waiting || running) ...[
+              Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                      color: waiting ? AppColors.accent : AppColors.run,
+                      shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+                child: Text(s.title.isEmpty ? '(untitled)' : s.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: sans(12.5,
+                        color: selected ? AppColors.fg1 : AppColors.fg2))),
+            const SizedBox(width: 8),
+            Text(relativeTime(s.lastActive),
+                style: mono(10,
+                    color: waiting ? AppColors.accent : AppColors.fg4)),
+          ]),
         ),
       ),
     );
@@ -999,6 +1086,12 @@ class _SidebarState extends State<_Sidebar> {
                 tooltip: 'Refresh',
                 onTap:
                     hasClient && !_loading ? widget.onRefreshSessions : null),
+            if (!kMobile)
+              IconBtn('settings',
+                  size: 30,
+                  iconSize: 15,
+                  tooltip: 'Settings',
+                  onTap: hasClient ? _openSettings : null),
           ]),
         ),
       ),

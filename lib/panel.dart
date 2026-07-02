@@ -49,7 +49,7 @@ Future<T?> presentScreen<T>(
           padding: EdgeInsets.only(top: top),
           child: Align(
             alignment: Alignment.centerRight,
-            child: SizedBox(width: c.maxWidth < 520 ? c.maxWidth : 520.0, height: double.infinity, child: _frame(content, rounded: false, edge: true)),
+            child: SizedBox(width: c.maxWidth < 500 ? c.maxWidth : 460.0, height: double.infinity, child: _frame(content, rounded: false, edge: true)),
           ),
         );
       });
@@ -110,17 +110,32 @@ Future<T?> showModal<T>(
   );
 }
 
-Widget _frame(Widget child, {required bool rounded, bool edge = true}) => Material(
-      color: AppColors.bg,
-      borderRadius: rounded ? BorderRadius.circular(R.card) : null,
-      clipBehavior: Clip.antiAlias,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: rounded ? BorderRadius.circular(R.card) : null,
-          border: rounded
-              ? Border.all(color: AppColors.border2)
-              : (edge ? const Border(left: BorderSide(color: AppColors.border2)) : null),
-        ),
-        child: child,
+// Wide presentations (right drawer / centered dialog) sit on surface1 like
+// every other popover, with the hosted Scaffolds re-based onto the same
+// surface (single background, no darker strip). Narrow/full-screen keeps the
+// plain shell background so phones look exactly as before.
+Widget _frame(Widget child, {required bool rounded, bool edge = true}) {
+  final panel = rounded || edge;
+  final color = panel ? AppColors.surface1 : AppColors.bg;
+  return Material(
+    color: color,
+    borderRadius: rounded ? BorderRadius.circular(R.card) : null,
+    clipBehavior: Clip.antiAlias,
+    child: Container(
+      decoration: BoxDecoration(
+        borderRadius: rounded ? BorderRadius.circular(R.card) : null,
+        border: rounded
+            ? Border.all(color: AppColors.border2)
+            : (edge ? const Border(left: BorderSide(color: AppColors.border)) : null),
       ),
-    );
+      child: !panel
+          ? child
+          : Builder(
+              builder: (ctx) => Theme(
+                data: Theme.of(ctx).copyWith(scaffoldBackgroundColor: color),
+                child: child,
+              ),
+            ),
+    ),
+  );
+}

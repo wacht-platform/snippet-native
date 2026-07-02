@@ -741,9 +741,11 @@ class SnAppBar extends StatelessWidget {
     return Container(
       height: 58,
       padding: const EdgeInsets.fromLTRB(6, 0, 8, 0),
-      decoration: const BoxDecoration(
-        color: AppColors.bg,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+      decoration: BoxDecoration(
+        // Follows the ambient shell surface — desktop panels re-theme this to
+        // surface1 so the bar never reads as a darker strip (mobile: still bg).
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: const Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Row(children: [
         if (leading != null) leading! else if (onBack != null) IconBtn('chevron-left', iconSize: 22, onTap: onBack) else const SizedBox(width: 8),
