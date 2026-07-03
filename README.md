@@ -10,6 +10,8 @@ The remote client for [**snippet**](https://github.com/wacht-platform/snippet-se
 
 One adaptive UI, native on **Android** and **macOS**.
 
+> **Note:** Mobile (Android) is the primary, polished target. **Desktop support is experimental and a work in progress** — expect rough edges.
+
 _Built by the team behind [Wacht](https://wacht.dev) — open-source infrastructure for AI-native apps._
 
 </div>

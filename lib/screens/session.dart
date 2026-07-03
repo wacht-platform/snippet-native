@@ -509,18 +509,13 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       body: SafeArea(
         bottom: false,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (widget.embedded)
-            _desktopBar(s, running)
+          if (kMobile)
+            _mobileHeader(s, running, waiting)
           else
-            SnAppBar(
-              title: _title.isEmpty ? 'session' : _title,
-              onBack: () => Navigator.pop(context),
-              actions: [
-                if (running) IconBtn('stop', tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
-                _menu(s),
-              ],
-            ),
-          _statusStrip(s, running),
+            _desktopBar(s, running),
+          // Desktop keeps the detailed chip strip; on mobile the key facts fold
+          // into the header subtitle instead.
+          if (!kMobile) _statusStrip(s, running),
           if (_connError != null) _disconnectedBanner(),
           Expanded(
             child: _centerWide(s == null
@@ -604,8 +599,55 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: child))
       : child;
 
+  // Mobile chat header: a back button that returns to the session list, the
+  // title with a live status dot, and a compact subtitle folding in the key
+  // facts (status · model · context · approval) — so there's no separate,
+  // cramped desktop toolbar + scrolling chip strip on a phone.
+  Widget _mobileHeader(HarnessState? s, bool running, bool waiting) {
+    final statusWord = waiting ? 'Needs input' : (running ? 'Running' : 'Idle');
+    final facts = <String>[
+      statusWord,
+      if (_modelLabel != null) _modelLabel!,
+      if (s != null && s.contextWindow > 0 && s.lastPromptTokens > 0)
+        '${(s.lastPromptTokens / s.contextWindow * 100).clamp(0, 999).round()}% ctx',
+      if (s != null) (s.approvalMode == 'auto' ? 'auto-approve' : 'ask'),
+    ];
+    return Container(
+      padding: const EdgeInsets.fromLTRB(2, 4, 8, 6),
+      decoration: BoxDecoration(
+        color: readingBg,
+        border: const Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(children: [
+        // Back to the session list (the drawer is the mobile "menu").
+        IconBtn('chevron-left', iconSize: 24, tooltip: 'Sessions', onTap: widget.onMenu),
+        // Tapping the title area itself opens the session actions (rename, model,
+        // files, git, …) — no separate ellipsis button needed.
+        Expanded(
+          child: InkWell(
+            onTap: () => _openActions(s),
+            borderRadius: BorderRadius.circular(R.sm),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(_title.isEmpty ? 'session' : _title,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: sans(16, weight: FontWeight.w600, color: AppColors.fg1)),
+                const SizedBox(height: 2),
+                Text(facts.join(' · '),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: sans(11.5, color: AppColors.fg3)),
+              ]),
+            ),
+          ),
+        ),
+        if (running) IconBtn('stop', tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
+      ]),
+    );
+  }
+
   // Compact, desktop-native toolbar for the embedded shell (distinct from the
-  // mobile SnAppBar): slim height, inline muted path, hover-sized controls.
+  // mobile header): slim height, inline muted path, hover-sized controls.
   Widget _desktopBar(HarnessState? s, bool running) {
     return Container(
       height: 50,

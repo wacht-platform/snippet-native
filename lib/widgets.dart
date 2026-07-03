@@ -37,10 +37,54 @@ void toast(BuildContext context, String message, {bool danger = false}) {
   });
 }
 
+/// A toast with tappable action buttons (e.g. Open / Share after a download).
+/// Unlike [toast] it isn't IgnorePointer'd, and it lingers longer so the actions
+/// are reachable. Tapping an action dismisses it.
+typedef ToastAction = ({String label, String icon, VoidCallback onTap});
+
+void actionToast(BuildContext context, String message, {required List<ToastAction> actions}) {
+  final overlay = Overlay.maybeOf(context, rootOverlay: true);
+  if (overlay == null) return;
+  _activeToast?.remove();
+  _toastTimer?.cancel();
+  late final OverlayEntry entry;
+  void dismiss() {
+    if (_activeToast == entry) {
+      entry.remove();
+      _activeToast = null;
+      _toastTimer?.cancel();
+    }
+  }
+
+  entry = OverlayEntry(
+    builder: (ctx) => Positioned(
+      left: 0,
+      right: 0,
+      bottom: MediaQuery.of(ctx).padding.bottom + 28,
+      child: Center(
+        child: _ToastCard(
+          message: message,
+          danger: false,
+          actions: actions.map((a) => (label: a.label, icon: a.icon, onTap: () {
+                // Run the action first, then tear the toast down — removing the
+                // overlay entry mid-tap could otherwise swallow the action.
+                a.onTap();
+                dismiss();
+              })).toList(),
+        ),
+      ),
+    ),
+  );
+  _activeToast = entry;
+  overlay.insert(entry);
+  _toastTimer = Timer(const Duration(milliseconds: 6000), dismiss);
+}
+
 class _ToastCard extends StatefulWidget {
   final String message;
   final bool danger;
-  const _ToastCard({required this.message, required this.danger});
+  final List<ToastAction> actions;
+  const _ToastCard({required this.message, required this.danger, this.actions = const []});
   @override
   State<_ToastCard> createState() => _ToastCardState();
 }
@@ -56,25 +100,63 @@ class _ToastCardState extends State<_ToastCard> with SingleTickerProviderStateMi
   @override
   Widget build(BuildContext context) {
     final curve = CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
-    return FadeTransition(
-      opacity: curve,
-      child: SlideTransition(
-        position: Tween(begin: const Offset(0, 0.25), end: Offset.zero).animate(curve),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 440),
-          margin: const EdgeInsets.symmetric(horizontal: 24),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          decoration: BoxDecoration(
-            color: AppColors.surface2,
-            borderRadius: BorderRadius.circular(R.md),
-            border: Border.all(color: AppColors.border2),
-            boxShadow: const [BoxShadow(color: Color(0x55000000), blurRadius: 22, offset: Offset(0, 8))],
+    final accent = widget.danger ? AppColors.danger : AppColors.accent;
+    // Material ancestor: without it, text floating in the root Overlay falls back
+    // to the debug default style (the yellow underline). It also gives clean ink.
+    return Material(
+      type: MaterialType.transparency,
+      child: FadeTransition(
+        opacity: curve,
+        child: SlideTransition(
+          position: Tween(begin: const Offset(0, 0.18), end: Offset.zero).animate(curve),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 460),
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            decoration: BoxDecoration(
+              color: AppColors.surface1,
+              borderRadius: BorderRadius.circular(R.card),
+              border: Border.all(color: AppColors.border),
+              boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 28, offset: Offset(0, 10))],
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(child: AppIcon(widget.danger ? 'alert-triangle' : 'check', size: 14, color: accent)),
+              ),
+              const SizedBox(width: 11),
+              Flexible(
+                child: Text(widget.message,
+                    style: sans(13, height: 1.3, color: AppColors.fg1).copyWith(decoration: TextDecoration.none)),
+              ),
+              for (final a in widget.actions) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: a.onTap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface2,
+                      borderRadius: BorderRadius.circular(R.sm),
+                      border: Border.all(color: AppColors.border2),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      AppIcon(a.icon, size: 13, color: AppColors.fg1),
+                      const SizedBox(width: 6),
+                      Text(a.label,
+                          style: sans(12.5, weight: FontWeight.w600, color: AppColors.fg1).copyWith(decoration: TextDecoration.none)),
+                    ]),
+                  ),
+                ),
+              ],
+            ]),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            AppIcon(widget.danger ? 'alert-triangle' : 'check', size: 15, color: widget.danger ? AppColors.danger : AppColors.accent),
-            const SizedBox(width: 10),
-            Flexible(child: Text(widget.message, style: sans(12.5, color: AppColors.fg1))),
-          ]),
         ),
       ),
     );
@@ -501,14 +583,14 @@ class Bubble extends StatelessWidget {
       if (mine)
         SelectableText(shown, style: sans(16, height: 1.5, color: AppColors.fg1))
       else ...[
-        // SelectionArea so a drag selects across all markdown blocks at once.
-        SelectionArea(
-          child: MarkdownBody(
-            data: shown,
-            selectable: false,
-            styleSheet: markdownStyle(context),
-            onTapLink: (txt, href, title) => openMarkdownLink(href),
-          ),
+        // `selectable: true` gives native selection handles that work reliably on
+        // mobile (a per-bubble SelectionArea wrapper did not show a selection on
+        // touch); a drag still selects across all blocks within the message.
+        MarkdownBody(
+          data: shown,
+          selectable: true,
+          styleSheet: markdownStyle(context),
+          onTapLink: (txt, href, title) => openMarkdownLink(href),
         ),
         // Copy only on agent messages.
         _CopyButton(text: shown),
