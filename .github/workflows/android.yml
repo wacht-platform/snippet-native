@@ -46,20 +46,20 @@ jobs:
 
       # Sign every build with ONE stable keystore so successive APKs share a
       # signature and install as updates over each other (and over the original
-      # box build). Without this, each runner auto-generates a throwaway debug
-      # keystore, so every APK has a different signature and the device rejects
-      # the install ("package appears to be invalid"). The release build uses
-      # signingConfigs.debug (see android/app/build.gradle.kts), which reads
-      # ~/.android/debug.keystore — so restoring the shared one here is enough.
-      - name: Restore the shared debug keystore
+      # box build). We decode the keystore to an explicit file and hand its path
+      # to Gradle via SNIPPET_KEYSTORE (see android/app/build.gradle.kts) — NOT
+      # via ~/.android/debug.keystore, because AGP's implicit debug-keystore
+      # lookup resolves elsewhere on the runner and silently signs with a fresh
+      # key, which is what made installs fail as "package appears to be invalid".
+      - name: Restore the shared keystore
         env:
           DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
           if [ -n "${DEBUG_KEYSTORE_B64:-}" ]; then
-            mkdir -p ~/.android
-            printf '%s' "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
-            echo "Restored the shared debug keystore for consistent signing."
+            printf '%s' "$DEBUG_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/snippet.keystore"
+            echo "SNIPPET_KEYSTORE=$RUNNER_TEMP/snippet.keystore" >> "$GITHUB_ENV"
+            echo "Restored the shared keystore ($(stat -c%s "$RUNNER_TEMP/snippet.keystore") bytes) for consistent signing."
           else
             echo "::warning::DEBUG_KEYSTORE_B64 secret not set — falling back to an auto-generated key; installs won't update over prior builds."
           fi

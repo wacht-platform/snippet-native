@@ -26,11 +26,33 @@ android {
         versionName = flutter.versionName
     }
 
+    // Release signing: when the build provides a keystore via SNIPPET_KEYSTORE
+    // (CI decodes it from a secret), sign with that so every build shares one
+    // signature and installs as an update over the last. Explicit path — we do
+    // NOT lean on AGP's implicit ~/.android/debug.keystore lookup, which resolves
+    // to a different location on CI runners and silently signs with a freshly
+    // generated key (the "package appears to be invalid" install failures).
+    signingConfigs {
+        create("release") {
+            val ksPath = System.getenv("SNIPPET_KEYSTORE")
+            if (ksPath != null && file(ksPath).exists()) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("SNIPPET_KEYSTORE_PASS") ?: "android"
+                keyAlias = System.getenv("SNIPPET_KEY_ALIAS") ?: "androiddebugkey"
+                keyPassword = System.getenv("SNIPPET_KEY_PASS") ?: "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Use the shared keystore when present; otherwise the local debug key
+            // so `flutter run --release` still works on a dev machine.
+            val ksPath = System.getenv("SNIPPET_KEYSTORE")
+            signingConfig = if (ksPath != null && file(ksPath).exists())
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 }
