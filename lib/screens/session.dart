@@ -936,10 +936,13 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
+            // Controls grouped bottom-right (attach next to send) rather than
+            // split to opposite corners — reads more balanced under the field.
             Row(children: [
-              IconBtn('plus', size: 36, iconSize: 21, tooltip: 'Attach', onTap: _onAttachTap),
               const Spacer(),
+              IconBtn('plus', size: 36, iconSize: 21, tooltip: 'Attach', onTap: _onAttachTap),
+              const SizedBox(width: 2),
               _SendBtn(enabled: canSend, onTap: canSend ? _sendMessage : null),
             ]),
           ]),
