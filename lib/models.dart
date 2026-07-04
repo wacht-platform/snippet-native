@@ -53,6 +53,11 @@ class ModelProfile {
         reasoningEffort = j['reasoning_effort'] as String? ?? '',
         stream = j['stream'] == true,
         supportsImages = j['supports_images'] is bool ? j['supports_images'] as bool : null;
+
+  /// Whether this profile is ready to use. Most providers need an API key, but
+  /// ChatGPT authenticates via an OAuth login (no key), so a keyless chatgpt
+  /// profile is still usable — don't gate it on [hasKey].
+  bool get usable => hasKey || provider == 'chatgpt';
 }
 
 class ServerConfig {

@@ -90,7 +90,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: AppCard(
-        onTap: p.hasKey ? () => _run(() => widget.client.setActiveProfile(p.name), 'activate') : null,
+        onTap: p.usable ? () => _run(() => widget.client.setActiveProfile(p.name), 'activate') : null,
         padding: const EdgeInsets.fromLTRB(12, 11, 6, 11),
         child: Row(children: [
           Container(
@@ -109,7 +109,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
               Row(children: [
                 Flexible(child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(14, color: AppColors.fg1))),
                 if (p.active) ...[const SizedBox(width: 8), _activeChip()],
-                if (!p.hasKey) ...[const SizedBox(width: 8), const WarnChip()],
+                if (!p.usable) ...[const SizedBox(width: 8), const WarnChip()],
               ]),
               const SizedBox(height: 4),
               Text('${p.provider} · ${p.model}', maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(11.5, color: AppColors.fg3)),
