@@ -902,45 +902,46 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       padding: EdgeInsets.fromLTRB(12, 4, 12, 8 + MediaQuery.of(context).padding.bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (_attachments.isNotEmpty) _attachmentBar(),
-        // One compact field with + (attach) and send inline; no top separator.
+        // Roomier composer: the text field gets its own line, with a control
+        // row (attach · send) beneath it — bigger, and closer in feel to a
+        // modern chat composer while staying in our design language.
         Container(
           decoration: BoxDecoration(
             color: AppColors.surface2,
             border: Border.all(color: AppColors.border),
-            borderRadius: BorderRadius.circular(R.md + 3),
+            borderRadius: BorderRadius.circular(R.card),
           ),
-          padding: const EdgeInsets.all(4),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-            IconBtn('plus', size: 30, iconSize: 18, tooltip: 'Attach', onTap: _onAttachTap),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                // Cmd/Ctrl+Enter sends (handy on desktop where Enter inserts a newline).
-                child: CallbackShortcuts(
-                  bindings: {
-                    const SingleActivator(LogicalKeyboardKey.enter, meta: true): () { if (canSend) _sendMessage(); },
-                    const SingleActivator(LogicalKeyboardKey.enter, control: true): () { if (canSend) _sendMessage(); },
-                  },
-                  child: TextField(
-                    controller: _input,
-                    minLines: 1,
-                    maxLines: 6,
-                    cursorColor: AppColors.accent,
-                    onChanged: (_) => setState(() {}),
-                    onSubmitted: (_) => _sendMessage(),
-                    style: sans(13.5, height: 1.4, color: AppColors.fg1),
-                    decoration: InputDecoration(
-                      isCollapsed: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                      border: InputBorder.none,
-                      hintText: 'Message snippet…',
-                      hintStyle: sans(13.5, color: AppColors.fg4),
-                    ),
-                  ),
+          padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // Cmd/Ctrl+Enter sends (handy on desktop where Enter inserts a newline).
+            CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.enter, meta: true): () { if (canSend) _sendMessage(); },
+                const SingleActivator(LogicalKeyboardKey.enter, control: true): () { if (canSend) _sendMessage(); },
+              },
+              child: TextField(
+                controller: _input,
+                minLines: 1,
+                maxLines: 8,
+                cursorColor: AppColors.accent,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _sendMessage(),
+                style: sans(15, height: 1.45, color: AppColors.fg1),
+                decoration: InputDecoration(
+                  isCollapsed: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                  border: InputBorder.none,
+                  hintText: 'Message snippet…',
+                  hintStyle: sans(15, color: AppColors.fg4),
                 ),
               ),
             ),
-            _SendBtn(enabled: canSend, onTap: canSend ? _sendMessage : null),
+            const SizedBox(height: 10),
+            Row(children: [
+              IconBtn('plus', size: 36, iconSize: 21, tooltip: 'Attach', onTap: _onAttachTap),
+              const Spacer(),
+              _SendBtn(enabled: canSend, onTap: canSend ? _sendMessage : null),
+            ]),
           ]),
         ),
       ]),
@@ -1681,9 +1682,9 @@ class _SendBtn extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: SizedBox(
-          width: 30,
-          height: 30,
-          child: Center(child: AppIcon('send', size: 16, color: enabled ? AppColors.accentFg : AppColors.fg4)),
+          width: 38,
+          height: 38,
+          child: Center(child: AppIcon('send', size: 18, color: enabled ? AppColors.accentFg : AppColors.fg4)),
         ),
       ),
     );
