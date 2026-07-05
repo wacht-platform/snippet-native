@@ -1613,30 +1613,39 @@ class _QuestionBarState extends State<_QuestionBar> {
   }
 
   Widget _chip(String label, bool sel, VoidCallback onTap) => Material(
-        color: sel ? AppColors.accent : AppColors.surface2,
+        color: sel ? AppColors.accentBg : AppColors.surface2,
         borderRadius: BorderRadius.circular(99),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(99),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            child: Text(label, style: sans(12.5, weight: FontWeight.w500, color: sel ? AppColors.accentFg : AppColors.fg1)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: sel ? AppColors.accentLine : AppColors.border),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+            child: Text(label, style: sans(13, weight: FontWeight.w600, color: sel ? AppColors.accent : AppColors.fg2)),
           ),
         ),
       );
 
   // Full-width selectable row for single-choice options (labels are sentences).
+  // Selected reads as a quiet accent tint + border + check, not a solid orange slab.
   Widget _choiceRow(String label, bool sel, VoidCallback onTap) => Material(
-        color: sel ? AppColors.accent : AppColors.surface2,
-        borderRadius: BorderRadius.circular(10),
+        color: sel ? AppColors.accentBg : AppColors.surface2,
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: sel ? AppColors.accentLine : AppColors.border),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             child: Row(children: [
-              Expanded(child: Text(label, style: sans(12.5, height: 1.35, weight: FontWeight.w500, color: sel ? AppColors.accentFg : AppColors.fg1))),
-              if (sel) ...[const SizedBox(width: 8), const AppIcon('check', size: 15, color: AppColors.accentFg)],
+              Expanded(child: Text(label, style: sans(14, height: 1.4, weight: FontWeight.w500, color: sel ? AppColors.fg1 : AppColors.fg2))),
+              if (sel) ...[const SizedBox(width: 10), const AppIcon('check', size: 16, color: AppColors.accent)],
             ]),
           ),
         ),
@@ -1688,25 +1697,30 @@ class _QuestionBarState extends State<_QuestionBar> {
   Widget build(BuildContext context) {
     final ctx = widget.question['context']?.toString();
     return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(color: AppColors.accentBg, border: Border.all(color: AppColors.accentLine), borderRadius: BorderRadius.circular(14)),
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+      decoration: BoxDecoration(
+        color: AppColors.surface1,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Padding(padding: EdgeInsets.only(top: 1), child: AppIcon('alert-triangle', size: 16, color: AppColors.accent)),
+        // A quiet eyebrow — accent dot + label — rather than an alarm-triangle box.
+        Row(children: [
+          Container(width: 7, height: 7, decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle)),
           const SizedBox(width: 9),
-          Expanded(child: Text('The agent needs your input', style: sans(13, weight: FontWeight.w600, color: AppColors.fg1))),
+          Text('NEEDS YOUR INPUT', style: sans(11, weight: FontWeight.w600, spacing: 0.6, color: AppColors.fg3)),
         ]),
         if (ctx != null && ctx.isNotEmpty && ctx != 'null') ...[
-          const SizedBox(height: 8),
-          Text(ctx, style: sans(12.5, height: 1.4, color: AppColors.fg2)),
+          const SizedBox(height: 12),
+          Text(ctx, style: sans(13, height: 1.45, color: AppColors.fg2)),
         ],
         for (final q in _questions) ...[
-          const SizedBox(height: 12),
-          Text(q['text']?.toString() ?? '', style: sans(13, weight: FontWeight.w500, height: 1.35, color: AppColors.fg1)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 15),
+          Text(q['text']?.toString() ?? '', style: sans(15, weight: FontWeight.w600, height: 1.4, color: AppColors.fg1)),
+          const SizedBox(height: 11),
           ..._inputFor(q),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Btn('Send answer', small: true, icon: 'send', full: true, disabled: !_ready, onTap: _ready ? _submit : null),
       ]),
     );
