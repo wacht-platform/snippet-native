@@ -39,6 +39,7 @@ class _FileExplorerState extends State<FileExplorer> {
   bool _selecting = false;
   final Set<String> _selected = {};
   String? _busy; // non-null while uploading/deleting (label shown in a progress strip)
+  String? _root; // the folder we opened at — the OS back button climbs no higher
 
   @override
   void initState() {
@@ -165,8 +166,23 @@ class _FileExplorerState extends State<FileExplorer> {
           future: _future,
           builder: (context, snap) {
             final listing = snap.data;
+            if (listing != null) _root ??= listing.path;
             final segs = (listing?.path ?? '').split('/').where((s) => s.isNotEmpty).toList();
-            return Column(children: [
+            // OS/gesture back: exit select mode first → else climb ONE folder →
+            // and only leave the browser once we're back at the folder we opened.
+            final canLeave = !_selecting &&
+                (listing == null || listing.parent == null || listing.path == _root);
+            return PopScope(
+              canPop: canLeave,
+              onPopInvokedWithResult: (didPop, _) {
+                if (didPop) return;
+                if (_selecting) {
+                  _exitSelect();
+                } else if (listing != null && listing.parent != null && listing.path != _root) {
+                  _go(listing.parent);
+                }
+              },
+              child: Column(children: [
               SnAppBar(
                 title: _selecting ? '${_selected.length} selected' : widget.title,
                 subtitle: _selecting ? null : listing?.path,
@@ -249,7 +265,8 @@ class _FileExplorerState extends State<FileExplorer> {
                             ],
                           ),
               ),
-            ]);
+            ]),
+            );
           },
         ),
       ),
