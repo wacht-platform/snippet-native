@@ -639,6 +639,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     final statusWord = waiting ? 'Needs input' : (running ? 'Running' : 'Idle');
     final facts = <String>[
       statusWord,
+      if (s?.goal?.ongoing ?? false) (s!.goal!.paused ? '◇ goal paused' : '◇ goal'),
       if (_modelLabel != null) _modelLabel!,
       if (s != null && s.contextWindow > 0 && s.lastPromptTokens > 0)
         '${(s.lastPromptTokens / s.contextWindow * 100).clamp(0, 999).round()}% ctx',
@@ -724,6 +725,24 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     );
   }
 
+  // Set an autonomous /goal: the agent drives toward it on its own until it's
+  // done, you cancel, or it's rate-limited. Sent as a LoopInput over the socket.
+  Future<void> _setGoal() async {
+    final text = await promptText(context,
+        title: 'Set an autonomous goal',
+        hint: 'What should the agent work toward on its own?',
+        saveLabel: 'Set goal');
+    final t = text?.trim();
+    if (t == null || t.isEmpty) return;
+    _send({'kind': 'set_goal', 'value': t});
+    _toast('Goal set — the agent will drive toward it');
+  }
+
+  void _cancelGoal() {
+    _send({'kind': 'cancel_goal'});
+    _toast('Cancelling the goal');
+  }
+
   List<PopupMenuEntry<VoidCallback>> _actionItems(HarnessState? s) {
     final manual = (s?.approvalMode ?? 'auto') == 'manual';
     final ws = s?.workspace ?? '';
@@ -746,6 +765,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         _send({'kind': 'set_mode', 'value': manual ? 'auto' : 'manual'});
         _toast(manual ? 'Approval: auto' : 'Approval: ask');
       }, value: manual ? 'Ask' : 'Auto'),
+      (s?.goal?.ongoing ?? false)
+          ? item('zap', 'Cancel goal', _cancelGoal, value: s!.goal!.paused ? 'paused' : 'running')
+          : item('zap', 'Set goal', _setGoal),
       const PopupMenuDivider(),
       item('git-branch', 'Git', () => presentScreen(context, builder: (_, close) => GitScreen(client: widget.client, sessionId: widget.sessionId, onClose: close))),
       item('folder', 'Browse', () {
@@ -782,6 +804,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           _send({'kind': 'set_mode', 'value': manual ? 'auto' : 'manual'});
           _toast(manual ? 'Approval: auto' : 'Approval: ask');
         })),
+        (s?.goal?.ongoing ?? false)
+            ? _actionTile('zap', 'Cancel goal', value: s!.goal!.paused ? 'paused' : 'running', onTap: () => run(_cancelGoal))
+            : _actionTile('zap', 'Set goal', onTap: () => run(_setGoal)),
         const SizedBox(height: 12),
         const SectionLabel('Workspace'),
         _actionTile('git-branch', 'Git', onTap: () => run(() => presentScreen(context,

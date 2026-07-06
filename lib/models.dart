@@ -179,6 +179,7 @@ class HarnessState {
   final RateWindow? ratePrimary;
   final RateWindow? rateSecondary;
   final List<Checkpoint> checkpoints;
+  final GoalInfo? goal; // an active autonomous /goal, if any
 
   HarnessState({
     required this.status,
@@ -197,6 +198,7 @@ class HarnessState {
     required this.ratePrimary,
     required this.rateSecondary,
     required this.checkpoints,
+    required this.goal,
   });
 
   factory HarnessState.fromJson(Map<String, dynamic> j) {
@@ -228,6 +230,9 @@ class HarnessState {
       checkpoints: ((j['checkpoints'] as List?) ?? const [])
           .map((e) => Checkpoint.fromJson((e as Map).cast<String, dynamic>()))
           .toList(),
+      goal: (j['goal'] is Map)
+          ? GoalInfo.fromJson((j['goal'] as Map).cast<String, dynamic>())
+          : null,
     );
   }
 
@@ -255,8 +260,27 @@ class HarnessState {
       ratePrimary: base.ratePrimary,
       rateSecondary: base.rateSecondary,
       checkpoints: base.checkpoints,
+      goal: base.goal,
     );
   }
+}
+
+/// An active autonomous `/goal` the agent is driving toward.
+class GoalInfo {
+  final String text;
+  final String dir; // the agent's .snippet/goals/… workspace
+  final String status; // active | paused | complete | cancelled
+  final int autonomousTurns;
+  final int resumeAt; // unix secs a paused (rate-limited) goal can resume (0 = unknown)
+  GoalInfo.fromJson(Map<String, dynamic> j)
+      : text = j['text'] as String? ?? '',
+        dir = j['dir'] as String? ?? '',
+        status = j['status'] as String? ?? 'active',
+        autonomousTurns = (j['autonomous_turns'] as num?)?.toInt() ?? 0,
+        resumeAt = (j['resume_at'] as num?)?.toInt() ?? 0;
+  bool get active => status == 'active';
+  bool get paused => status == 'paused';
+  bool get ongoing => active || paused;
 }
 
 /// Human label for a rate-limit window length (mirrors the TUI).
