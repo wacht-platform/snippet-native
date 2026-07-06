@@ -547,21 +547,39 @@ class _DashedBorder extends CustomPainter {
 /// Internal attachment markers the agent reads but users must never see.
 final RegExp _attachMarkerRe = RegExp(r'\[attached (image|file) —[^\]]*\]', multiLine: true);
 
-/// Hide the `[attached …]` markers from displayed text. If a message is only
-/// attachments, show a short chip-like summary instead of an empty bubble.
-String hideAttachmentMarkers(String raw) {
-  final matches = _attachMarkerRe.allMatches(raw).toList();
-  if (matches.isEmpty) return raw;
-  final stripped = raw.replaceAll(_attachMarkerRe, '').trim();
-  final images = matches.where((m) => m.group(1) == 'image').length;
-  final files = matches.length - images;
-  final parts = <String>[];
-  if (images > 0) parts.add('$images image${images == 1 ? '' : 's'}');
-  if (files > 0) parts.add('$files file${files == 1 ? '' : 's'}');
-  final summary = '📎 ${parts.join(' · ')}';
-  // Keep the attachment visible even when the message also has text — otherwise a
-  // sent message shows only its text and the fact it carried attachments vanishes.
-  return stripped.isEmpty ? summary : '$stripped\n\n$summary';
+/// Strip the internal `[attached …]` markers from displayed text — the attachment
+/// itself is surfaced separately, as a pill on the message (see [Bubble]).
+String hideAttachmentMarkers(String raw) => raw.replaceAll(_attachMarkerRe, '').trim();
+
+/// A read-only "📎 2 images · 1 file" pill shown on a sent message that carried
+/// attachments — the same shape as the composer's attachment pill.
+class _AttachmentPill extends StatelessWidget {
+  final int images, files;
+  const _AttachmentPill({required this.images, required this.files});
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[];
+    if (images > 0) parts.add('$images image${images == 1 ? '' : 's'}');
+    if (files > 0) parts.add('$files file${files == 1 ? '' : 's'}');
+    final total = images + files;
+    final label = parts.isEmpty ? '$total attachment${total == 1 ? '' : 's'}' : parts.join(' · ');
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppColors.surface2,
+          borderRadius: BorderRadius.circular(R.card),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Text('📎', style: TextStyle(fontSize: 12.5)),
+          const SizedBox(width: 7),
+          Text(label, style: sans(12.5, color: AppColors.fg2)),
+        ]),
+      ),
+    );
+  }
 }
 
 /// One chat message — flat (no bubble/box). YOUR messages get a left accent bar
@@ -573,7 +591,10 @@ class Bubble extends StatelessWidget {
   const Bubble({super.key, required this.mine, required this.text});
   @override
   Widget build(BuildContext context) {
-    final shown = hideAttachmentMarkers(text);
+    final matches = _attachMarkerRe.allMatches(text).toList();
+    final shown = matches.isEmpty ? text : text.replaceAll(_attachMarkerRe, '').trim();
+    final images = matches.where((m) => m.group(1) == 'image').length;
+    final files = matches.length - images;
     // Clean, Claude-style: a readable sender header (no accent bar / outline),
     // differentiated by name + colour rather than a border.
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -582,9 +603,14 @@ class Bubble extends StatelessWidget {
         style: sans(13.5, weight: FontWeight.w600, color: mine ? AppColors.fg2 : AppColors.accent),
       ),
       const SizedBox(height: 6),
-      if (mine)
-        SelectableText(shown, style: sans(16, height: 1.5, color: AppColors.fg1))
-      else ...[
+      if (mine) ...[
+        if (shown.isNotEmpty) SelectableText(shown, style: sans(16, height: 1.5, color: AppColors.fg1)),
+        // A sent attachment stays visible as a pill (below any text it came with).
+        if (matches.isNotEmpty) ...[
+          if (shown.isNotEmpty) const SizedBox(height: 8),
+          _AttachmentPill(images: images, files: files),
+        ],
+      ] else ...[
         // `selectable: true` gives native selection handles that work reliably on
         // mobile (a per-bubble SelectionArea wrapper did not show a selection on
         // touch); a drag still selects across all blocks within the message.
