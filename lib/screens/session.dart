@@ -707,6 +707,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     final facts = <String>[
       statusWord,
       if (s?.goal?.ongoing ?? false) (s!.goal!.paused ? '◇ goal paused' : '◇ goal'),
+      if ((s?.lanes.where((l) => l.running).length ?? 0) > 0)
+        '◆ ${s!.lanes.where((l) => l.running).length} lane${s.lanes.where((l) => l.running).length == 1 ? '' : 's'}',
       if ((s?.watchCount ?? 0) > 0) '◉ watching ${s!.watchCount}',
       if (_modelLabel != null) _modelLabel!,
       if (s != null && s.contextWindow > 0 && s.lastPromptTokens > 0)
@@ -836,6 +838,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       (s?.goal?.ongoing ?? false)
           ? item('zap', 'Cancel goal', _cancelGoal, value: s!.goal!.paused ? 'paused' : 'running')
           : item('zap', 'Set goal', _setGoal),
+      if ((s?.lanes.isNotEmpty ?? false))
+        item('layers', 'Lanes', _showLanes,
+            value: '${s!.lanes.where((l) => l.running).length} running'),
       const PopupMenuDivider(),
       item('git-branch', 'Git', () => presentScreen(context, builder: (_, close) => GitScreen(client: widget.client, sessionId: widget.sessionId, onClose: close))),
       item('folder', 'Browse', () {
@@ -875,6 +880,10 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         (s?.goal?.ongoing ?? false)
             ? _actionTile('zap', 'Cancel goal', value: s!.goal!.paused ? 'paused' : 'running', onTap: () => run(_cancelGoal))
             : _actionTile('zap', 'Set goal', onTap: () => run(_setGoal)),
+        if ((s?.lanes.isNotEmpty ?? false))
+          _actionTile('layers', 'Lanes',
+              value: '${s!.lanes.where((l) => l.running).length} running',
+              onTap: () => run(_showLanes)),
         const SizedBox(height: 12),
         const SectionLabel('Workspace'),
         _actionTile('git-branch', 'Git', onTap: () => run(() => presentScreen(context,
@@ -1346,6 +1355,59 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       },
       // Free the controller when the sheet closes (it leaked one per open).
     )).whenComplete(ctrl.dispose);
+  }
+
+  // Live lane status: every delegated lane with a status dot, elapsed time for
+  // running ones, and the summary for finished ones.
+  void _showLanes() {
+    final lanes = _state?.lanes ?? const <LaneInfo>[];
+    if (lanes.isEmpty) return;
+    String elapsed(String startedAt) {
+      final t = DateTime.tryParse(startedAt);
+      if (t == null) return '';
+      final d = DateTime.now().toUtc().difference(t.toUtc());
+      if (d.inMinutes < 1) return '${d.inSeconds}s';
+      if (d.inHours < 1) return '${d.inMinutes}m';
+      return '${d.inHours}h ${d.inMinutes % 60}m';
+    }
+
+    showAppSheet(context, title: 'Lanes', child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final l in lanes.reversed) Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: l.running
+                      ? AppColors.accent
+                      : (l.status == 'failed' ? AppColors.danger : AppColors.ok),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(l.title, style: sans(13.5, weight: FontWeight.w500, color: AppColors.fg1)),
+                const SizedBox(height: 2),
+                Text(
+                  l.running
+                      ? 'running · ${elapsed(l.startedAt)}'
+                      : (l.summary?.trim().isNotEmpty == true ? '${l.status} — ${l.summary}' : l.status),
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: sans(11.5, height: 1.35, color: AppColors.fg3),
+                ),
+              ]),
+            ),
+          ]),
+        ),
+      ],
+    ));
   }
 
   void _showUsage() {

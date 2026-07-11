@@ -182,6 +182,7 @@ class HarnessState {
   final GoalInfo? goal; // an active autonomous /goal, if any
   final bool compacting; // a history-compaction pass is running
   final int watchCount; // active file watches (monitor meta-tool)
+  final List<LaneInfo> lanes; // delegated background lanes (live status)
 
   HarnessState({
     required this.status,
@@ -203,6 +204,7 @@ class HarnessState {
     required this.goal,
     this.compacting = false,
     this.watchCount = 0,
+    this.lanes = const [],
   });
 
   factory HarnessState.fromJson(Map<String, dynamic> j) {
@@ -239,6 +241,9 @@ class HarnessState {
           : null,
       compacting: j['compacting'] as bool? ?? false,
       watchCount: (j['watches'] as List?)?.length ?? 0,
+      lanes: ((j['lanes'] as List?) ?? const [])
+          .map((e) => LaneInfo.fromJson((e as Map).cast<String, dynamic>()))
+          .toList(),
     );
   }
 
@@ -269,8 +274,27 @@ class HarnessState {
       goal: base.goal,
       compacting: base.compacting,
       watchCount: base.watchCount,
+      lanes: base.lanes,
     );
   }
+}
+
+/// A delegated background lane's live status (mirror of the daemon's LaneRecord).
+class LaneInfo {
+  final String id;
+  final String title;
+  final String status; // running | completed | failed
+  final String startedAt;
+  final String? summary;
+  LaneInfo({required this.id, required this.title, required this.status, required this.startedAt, this.summary});
+  factory LaneInfo.fromJson(Map<String, dynamic> j) => LaneInfo(
+        id: j['id'] as String? ?? '',
+        title: j['title'] as String? ?? '',
+        status: j['status'] as String? ?? '',
+        startedAt: j['started_at'] as String? ?? '',
+        summary: j['summary'] as String?,
+      );
+  bool get running => status == 'running';
 }
 
 /// An active autonomous `/goal` the agent is driving toward.
