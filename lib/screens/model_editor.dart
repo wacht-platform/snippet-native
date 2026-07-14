@@ -11,10 +11,11 @@ const _providers = [
   ('openai', 'OpenAI'),
   ('gemini', 'Google'),
   ('openai-compatible', 'OpenAI-compatible'),
+  ('anthropic-compatible', 'Anthropic-compatible'),
   ('openrouter', 'OpenRouter'),
 ];
 
-bool _needsBaseUrl(String p) => p == 'openai-compatible';
+bool _needsBaseUrl(String p) => p == 'openai-compatible' || p == 'anthropic-compatible';
 bool _defaultImages(String p) => p == 'anthropic' || p == 'gemini' || p == 'openai' || p == 'chatgpt';
 // Providers that go through the OpenAI-compatible adapter, where `stream` applies.
 bool _usesOpenAiAdapter(String p) => p == 'openai' || p == 'openai-compatible' || p == 'openrouter';
