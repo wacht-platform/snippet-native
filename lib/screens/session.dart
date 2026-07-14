@@ -1099,6 +1099,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           )
         : Container(
             width: 118,
+            height: 60, // match the image thumbnails so the row is even
             padding: const EdgeInsets.symmetric(horizontal: 9),
             decoration: BoxDecoration(
               color: AppColors.surface2,
@@ -1110,7 +1111,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
               const SizedBox(width: 6),
               Expanded(
                 child: Text(a.name,
-                    maxLines: 2, overflow: TextOverflow.ellipsis, style: sans(10.5, height: 1.25, color: AppColors.fg2)),
+                    maxLines: 3, overflow: TextOverflow.ellipsis, style: sans(10.5, height: 1.25, color: AppColors.fg2)),
               ),
             ]),
           );
