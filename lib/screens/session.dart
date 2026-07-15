@@ -600,6 +600,10 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                 ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)))
                 : NotificationListener<ScrollNotification>(
                     onNotification: _onScroll,
+                    // ONE SelectionArea over the whole transcript: continuous
+                    // selection across paragraphs, markdown blocks, and messages
+                    // (per-widget SelectableText could never cross its own bounds).
+                    child: SelectionArea(
                     child: ListView(
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
@@ -617,6 +621,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                       ],
                     ],
                   ),
+                ),
                 )),
               // Floating "jump to latest": scrolling up unpins auto-follow, and a
               // streaming reply then grows silently — give a one-tap way back.

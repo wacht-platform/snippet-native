@@ -117,6 +117,13 @@ ThemeData buildAppTheme() {
     scaffoldBackgroundColor: AppColors.bg,
     canvasColor: AppColors.bg,
     dividerColor: AppColors.border,
+    // Selection must be VISIBLE on near-black: a solid amber wash + amber
+    // handles (the M3 default was too faint to see what you'd grabbed).
+    textSelectionTheme: const TextSelectionThemeData(
+      selectionColor: Color(0x59E0A458), // ~35% amber
+      cursorColor: AppColors.accent,
+      selectionHandleColor: AppColors.accent,
+    ),
     splashColor: AppColors.surface3.withValues(alpha: 0.4),
     highlightColor: AppColors.surface3.withValues(alpha: 0.3),
     hoverColor: AppColors.surface3.withValues(alpha: 0.35), // desktop hover raise on every InkWell

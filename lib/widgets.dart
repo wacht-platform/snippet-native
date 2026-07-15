@@ -604,19 +604,23 @@ class Bubble extends StatelessWidget {
       ),
       const SizedBox(height: 6),
       if (mine) ...[
-        if (shown.isNotEmpty) SelectableText(shown, style: sans(16, height: 1.5, color: AppColors.fg1)),
+        // Plain Text on purpose: the transcript is wrapped in ONE SelectionArea
+        // (session.dart), which gives continuous selection ACROSS paragraphs and
+        // messages. Per-widget SelectableText would break that continuity.
+        if (shown.isNotEmpty) Text(shown, style: sans(16, height: 1.5, color: AppColors.fg1)),
         // A sent attachment stays visible as a pill (below any text it came with).
         if (matches.isNotEmpty) ...[
           if (shown.isNotEmpty) const SizedBox(height: 8),
           _AttachmentPill(images: images, files: files),
         ],
       ] else ...[
-        // `selectable: true` gives native selection handles that work reliably on
-        // mobile (a per-bubble SelectionArea wrapper did not show a selection on
-        // touch); a drag still selects across all blocks within the message.
+        // selectable: false on purpose — with `true`, EVERY markdown block is its
+        // own SelectableText, so a selection can't cross paragraphs and renders
+        // patchily. The transcript-level SelectionArea (session.dart) now owns
+        // selection: continuous across blocks AND messages, native handles.
         MarkdownBody(
           data: shown,
-          selectable: true,
+          selectable: false,
           styleSheet: markdownStyle(context),
           onTapLink: (txt, href, title) => openMarkdownLink(href),
         ),
