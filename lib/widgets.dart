@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'platform.dart';
@@ -249,6 +250,77 @@ MarkdownStyleSheet markdownStyle(BuildContext context) {
     tableBody: sans(14, color: AppColors.fg1),
     horizontalRuleDecoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
   );
+}
+
+/// Fenced code blocks get a dedicated small copy button (top-right) and
+/// horizontal scrolling; inline code falls through to the default styling.
+class CodeBlockBuilder extends MarkdownElementBuilder {
+  @override
+  Widget? visitElementAfterWithContext(
+      BuildContext context, md.Element element, TextStyle? preferredStyle, TextStyle? parentStyle) {
+    final raw = element.textContent;
+    final isBlock = raw.contains('\n') ||
+        (element.attributes['class'] ?? '').startsWith('language-');
+    if (!isBlock) return null; // inline `code` keeps the default look
+    final code = raw.endsWith('\n') ? raw.substring(0, raw.length - 1) : raw;
+    return _MdCodeBlock(code: code);
+  }
+}
+
+class _MdCodeBlock extends StatefulWidget {
+  final String code;
+  const _MdCodeBlock({required this.code});
+  @override
+  State<_MdCodeBlock> createState() => _MdCodeBlockState();
+}
+
+class _MdCodeBlockState extends State<_MdCodeBlock> {
+  bool _copied = false;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.code));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(R.sm),
+      ),
+      child: Stack(children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(12, 12, 40, 12),
+          child: Text(widget.code, style: mono(13, height: 1.5, color: AppColors.fg1)),
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(R.xs),
+            onTap: _copy,
+            child: Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: AppColors.surface3,
+                borderRadius: BorderRadius.circular(R.xs),
+              ),
+              child: AppIcon(_copied ? 'check' : 'clipboard',
+                  size: 13, color: _copied ? AppColors.ok : AppColors.fg3),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
 }
 
 /// Line icon (Material outlined, mapped from the handoff's Lucide names).
@@ -622,6 +694,7 @@ class Bubble extends StatelessWidget {
           data: shown,
           selectable: false,
           styleSheet: markdownStyle(context),
+          builders: {'code': CodeBlockBuilder()},
           onTapLink: (txt, href, title) => openMarkdownLink(href),
         ),
         // Copy only on agent messages.
