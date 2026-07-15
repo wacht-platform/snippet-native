@@ -216,12 +216,18 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           final follow = _stickToBottom;
           // Auto-submit queued messages only when the run lands on IDLE. Flushing
           // on any running→non-running edge also fired into waiting_for_input,
-          // where the queued text would "answer" the agent's own question.
+          // where the queued text would "answer" the agent's own question. So
+          // flush on ANY running→not-running edge EXCEPT waiting_for_input —
+          // that covers idle (finished) AND interrupted (user paused/stopped the
+          // run), which previously left the queue stranded.
           // Sent as a BURST of individual messages: the first opens the turn and
           // the rest fold in as steers before the first model call — the agent
           // sees the full set up front, while each message keeps its own frame
           // (and its own attachments) instead of being joined into one blob.
-          if (_prevStatus == 'running' && next.status == 'idle' && _queued.isNotEmpty) {
+          if (_prevStatus == 'running' &&
+              next.status != 'running' &&
+              next.status != 'waiting_for_input' &&
+              _queued.isNotEmpty) {
             for (final m in _queued) {
               _send({'kind': 'user_message', 'value': m});
               _pending.add(m);
