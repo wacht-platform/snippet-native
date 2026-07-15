@@ -946,6 +946,12 @@ class _SidebarState extends State<_Sidebar> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: sans(statusSize, color: AppColors.fg4))),
+              if ((s.profile ?? '').isNotEmpty)
+                Flexible(
+                    child: Text('  ·  ${s.profile}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: mono(statusSize - 1.5, color: AppColors.fg4))),
             ]),
             if (s.status == 'waiting_for_input') ...[
               const SizedBox(height: 10),

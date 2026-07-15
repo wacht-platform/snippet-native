@@ -14,7 +14,7 @@ import '../models.dart';
 import '../notifications.dart';
 import '../platform.dart';
 import '../theme.dart';
-import '../tool_views.dart';
+import '../transcript.dart';
 import '../panel.dart';
 import '../widgets.dart';
 import 'files.dart';
@@ -583,9 +583,16 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             _mobileHeader(s, running, waiting)
           else
             _desktopBar(s, running),
-          // Desktop keeps the detailed chip strip; on mobile the key facts fold
-          // into the header subtitle instead.
+          // Desktop keeps the detailed chip strip; mobile gets the dense live
+          // status rail (ctx gauge · tokens · lanes · watches · rate · mode).
           if (!kMobile) _statusStrip(s, running),
+          if (kMobile)
+            StatusRail(
+              state: s,
+              modelLabel: _modelLabel,
+              onUsageTap: _showUsage,
+              onLanesTap: _showLanes,
+            ),
           if (_connError != null) _disconnectedBanner(),
           Expanded(
             child: Stack(children: [
@@ -715,16 +722,11 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     final statusWord = compacting
         ? 'Compacting history…'
         : (waiting ? 'Needs input' : (running ? 'Running' : 'Idle'));
+    // Just status + model here — ctx/tokens/lanes/watches/rate/mode live in the
+    // StatusRail directly below.
     final facts = <String>[
       statusWord,
-      if (s?.goal?.ongoing ?? false) (s!.goal!.paused ? '◇ goal paused' : '◇ goal'),
-      if ((s?.lanes.where((l) => l.running).length ?? 0) > 0)
-        '◆ ${s!.lanes.where((l) => l.running).length} lane${s.lanes.where((l) => l.running).length == 1 ? '' : 's'}',
-      if ((s?.watchCount ?? 0) > 0) '◉ watching ${s!.watchCount}',
       if (_modelLabel != null) _modelLabel!,
-      if (s != null && s.contextWindow > 0 && s.lastPromptTokens > 0)
-        '${(s.lastPromptTokens / s.contextWindow * 100).clamp(0, 999).round()}% ctx',
-      if (s != null) (s.approvalMode == 'auto' ? 'auto-approve' : 'ask'),
     ];
     return Container(
       padding: const EdgeInsets.fromLTRB(2, 4, 8, 6),
@@ -1151,28 +1153,30 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   List<Widget> _transcript(List<Map<String, dynamic>> events) {
     final out = <Widget>[];
     Map<String, dynamic>? pending;
-    final group = <Widget>[]; // consecutive tool lines, grouped together
+    final run = <Widget>[]; // consecutive dense tool rows
+    final laneRowsShown = <String>{}; // spawn cards already emitted (by id)
 
     void flushPending() {
       final p = pending;
       if (p != null) {
         final name = _s(p['tool_name']);
-        group.add(ToolLine(tool: name, icon: toolIcon(name), arg: toolArgSummary(name, p['arguments']), done: false, onTap: () => _showToolDetail(name, p['arguments'], null)));
+        run.add(DenseToolRow(tool: name, args: p['arguments']));
         pending = null;
       }
     }
 
-    // Close a run of consecutive tool calls: emit a single grouped block when
-    // there are several, or just the one line when it's alone.
     void endTools() {
       flushPending();
-      if (group.isEmpty) return;
-      if (group.length == 1) {
-        out.add(Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: group.first));
-      } else {
-        out.add(Padding(padding: const EdgeInsets.only(top: 2, bottom: 10), child: _ToolGroup(List.of(group))));
+      if (run.isEmpty) return;
+      out.add(ToolRun(List.of(run)));
+      run.clear();
+    }
+
+    LaneInfo? liveLane(String id) {
+      for (final l in _state?.lanes ?? const <LaneInfo>[]) {
+        if (l.id == id) return l;
       }
-      group.clear();
+      return null;
     }
 
     for (final e in events) {
@@ -1182,20 +1186,19 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           flushPending();
           // Meta-tools render via their own events (note → note, ask_user →
           // user_question, delegate_task → lane_spawned). Skip their generic tool
-          // lines so they don't double up or open a raw-JSON drawer.
+          // lines so they don't double up.
           if (_isMetaTool(_s(e['tool_name']))) break;
           pending = e;
         case 'tool_result':
           {
             final p = pending;
             if (p != null) {
-              final name = _s(p['tool_name']);
-              group.add(ToolLine(tool: name, icon: toolIcon(name), arg: toolArgSummary(name, p['arguments']), out: _resultStatus(e['result']), done: _ok(e['result']), onTap: () => _showToolDetail(name, p['arguments'], e['result'])));
+              run.add(DenseToolRow(tool: _s(p['tool_name']), args: p['arguments'], result: e['result']));
               pending = null;
             } else {
               final name = _s(e['tool_name']);
               if (_isMetaTool(name)) break;
-              group.add(ToolLine(tool: name, icon: toolIcon(name), out: _resultStatus(e['result']), done: _ok(e['result']), onTap: () => _showToolDetail(name, null, e['result'])));
+              run.add(DenseToolRow(tool: name, result: e['result']));
             }
           }
         case 'user_input':
@@ -1217,19 +1220,38 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           out.add(_NoteLine(entry, onTap: () => _showNote(entry)));
         case 'system_decision':
           endTools();
-          out.add(NoteLine(_s(e['reasoning'])));
+          out.add(SystemRow(step: _s(e['step']), reasoning: _s(e['reasoning'])));
         case 'lane_spawned':
           endTools();
-          out.add(NoteLine('lane: ${_s(e['title'])}'));
+          final id = _s(e['id']);
+          final title = _s(e['title']);
+          laneRowsShown.add(id);
+          // Live card: resolves the current record each build, so it flips
+          // running → done (with summary) in place.
+          out.add(LaneCard(title: title, live: () => liveLane(id)));
         case 'lane_completed':
           endTools();
-          out.add(NoteLine('lane done: ${_s(e['title'])}'));
+          final id = _s(e['id']);
+          // The spawn card already tracks this lane live — only render a card
+          // here if the spawn row is gone (e.g. compacted away).
+          if (!laneRowsShown.contains(id)) {
+            out.add(LaneCard(title: _s(e['title']), live: () => liveLane(id), summary: _s(e['summary'])));
+          }
         case 'user_question':
           endTools();
           final qd = e['questions'];
           final qs = (qd is Map ? qd['questions'] : null) as List?;
           final txt = (qs != null && qs.isNotEmpty && qs.first is Map) ? _s((qs.first as Map)['text']) : '';
-          if (txt.isNotEmpty) out.add(Padding(padding: const EdgeInsets.only(top: 2, bottom: 14), child: Bubble(mine: false, text: '❓ $txt')));
+          if (txt.isNotEmpty) {
+            out.add(Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const AppIcon('corner-down-right', size: 15, color: AppColors.run),
+                const SizedBox(width: 8),
+                Expanded(child: Text(txt, style: sans(13.5, height: 1.45, weight: FontWeight.w500, color: AppColors.fg2))),
+              ]),
+            ));
+          }
         case 'approval_request':
           break; // shown by the approval bar
         default:
@@ -1249,24 +1271,6 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   void _showNote(String text) {
     showAppSheet(context, title: 'Note', child: SelectableText(text, style: sans(13.5, height: 1.5, color: AppColors.fg1)));
   }
-
-  void _showToolDetail(String name, dynamic args, dynamic result) {
-    showAppSheet(context,
-        title: toolTitle(name),
-        child: toolDetailView(context, tool: name, args: args, result: result));
-  }
-
-  // Short result tag shown on the inline line: exit code for bash, else status.
-  String _resultStatus(dynamic r) {
-    if (r is! Map) return 'done';
-    final data = r['data'];
-    if (data is Map && data['exit_code'] != null) return 'exit ${data['exit_code']}';
-    final st = r['status']?.toString();
-    if (st == 'error') return 'error';
-    return 'done';
-  }
-
-  bool _ok(dynamic r) => !(r is Map && r['status'] == 'error');
 
 
   Future<void> _switchModel() async {
@@ -1603,48 +1607,6 @@ class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderState
 /// the daemon applies it (then it's replaced by the real bubble).
 /// A run of consecutive tool calls, grouped under a left rule. The "N steps"
 /// header toggles the group collapsed/expanded.
-class _ToolGroup extends StatefulWidget {
-  final List<Widget> children;
-  const _ToolGroup(this.children);
-  @override
-  State<_ToolGroup> createState() => _ToolGroupState();
-}
-
-class _ToolGroupState extends State<_ToolGroup> {
-  bool _open = true;
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 2, 4, 2),
-      decoration: const BoxDecoration(
-        border: Border(left: BorderSide(color: AppColors.border2, width: 2)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(R.sm),
-          child: InkWell(
-            onTap: () => setState(() => _open = !_open),
-            borderRadius: BorderRadius.circular(R.sm),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
-              child: Row(children: [
-                AnimatedRotation(
-                  turns: _open ? 0.25 : 0,
-                  duration: const Duration(milliseconds: 150),
-                  child: const AppIcon('chevron-right', size: 12, color: AppColors.fg4),
-                ),
-                const SizedBox(width: 6),
-                Text('${widget.children.length} steps', style: sans(10.5, color: AppColors.fg4, spacing: 0.5)),
-              ]),
-            ),
-          ),
-        ),
-        if (_open) ...widget.children,
-      ]),
-    );
-  }
-}
 
 class _QueuedBubble extends StatelessWidget {
   final String text;
