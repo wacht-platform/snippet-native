@@ -4,46 +4,46 @@ import 'package:iconsax_plus/iconsax_plus.dart';
 
 import 'platform.dart';
 
-/// snippet — Wacht design system (dark), one coral accent.
-/// Resolved dark-theme tokens from the design handoff.
-// Warm charcoal with a coral/terracotta accent.
+/// snippet — "Terminal Ink" (design direction #3): near-black, mono-forward,
+/// chrome kept almost invisible; color carries STATE (amber = active/attention,
+/// green = success, red = failure), never decoration.
 class AppColors {
-  static const bg = Color(0xFF0F0E0C); // --background (sidebar / shell)
-  static const canvas = Color(0xFF201F1C); // chat reading area (lighter than bg)
-  static const surface1 = Color(0xFF191815); // --card / --popover / --sidebar
-  static const surface2 = Color(0xFF262522); // --muted (inputs, chips)
-  static const surface3 = Color(0xFF34322E); // pressed / hover raise
+  static const bg = Color(0xFF060707); // shell / sidebar
+  static const canvas = Color(0xFF0B0D0D); // desktop reading area (a hair up)
+  static const surface1 = Color(0xFF0D0F0F); // cards / popovers / sheets
+  static const surface2 = Color(0xFF151818); // inputs, chips
+  static const surface3 = Color(0xFF1D2120); // pressed / hover raise
 
-  static const fg1 = Color(0xFFF5F4F0); // --foreground
-  static const fg2 = Color(0xFFCFCCC4); // secondary text, icons
-  static const fg3 = Color(0xFFA19E96); // --muted-foreground
-  static const fg4 = Color(0xFF7B786F); // faint icons, disabled
+  static const fg1 = Color(0xFFE8ECEA); // primary text
+  static const fg2 = Color(0xFFAAB2AE); // secondary text, icons
+  static const fg3 = Color(0xFF6C7370); // muted
+  static const fg4 = Color(0xFF565C59); // faint icons, disabled
 
-  static const border = Color(0x1AFFFFFF); // --border (white 10%)
-  static const border2 = Color(0x26FFFFFF); // --input (white 15%)
+  static const border = Color(0x17FFFFFF); // hairline (white ~9%)
+  static const border2 = Color(0x24FFFFFF); // inputs (white ~14%)
 
-  // Coral/terracotta accent: fills carry dark text.
-  static const accent = Color(0xFFD97757);
-  static const accentHover = Color(0xFFE58C6F);
-  static const accentFg = Color(0xFF2B1006);
-  static const accentBg = Color(0x28D97757); // ~16%
-  static const accentLine = Color(0x66D97757); // 40%
-  static const accentRing = Color(0x4DD97757); // 30%
+  // Amber accent — the "live" color; fills carry near-black text.
+  static const accent = Color(0xFFE0A458);
+  static const accentHover = Color(0xFFEBB470);
+  static const accentFg = Color(0xFF160E02);
+  static const accentBg = Color(0x26E0A458);
+  static const accentLine = Color(0x66E0A458);
+  static const accentRing = Color(0x4DE0A458);
 
-  // Status (on-theme: coral, no green); red for errors.
-  static const ok = Color(0xFFD97757);
-  static const okBg = Color(0x28D97757);
-  static const run = Color(0xFFE58C6F);
-  static const runBg = Color(0x26E58C6F);
-  static const danger = Color(0xFFFF6467); // --destructive
-  static const dangerBg = Color(0x26FF6467);
+  // Status: green = done/ok, amber = running/live, red = failed.
+  static const ok = Color(0xFF7BC49A);
+  static const okBg = Color(0x267BC49A);
+  static const run = Color(0xFFE0A458);
+  static const runBg = Color(0x26E0A458);
+  static const danger = Color(0xFFE86A6A);
+  static const dangerBg = Color(0x26E86A6A);
 
-  // diff line tints — additions coral (no green), deletions red.
-  static const diffAddBg = Color(0x20D97757);
-  static const diffDelBg = Color(0x20FF6467);
-  static const diffAddFg = Color(0xFFF0A98C);
-  static const diffDelFg = Color(0xFFFF9B98);
-  static const diffGutter = Color(0xFF52525B);
+  // diff line tints — real green/red, terminal-style.
+  static const diffAddBg = Color(0x1F7BC49A);
+  static const diffDelBg = Color(0x1FE86A6A);
+  static const diffAddFg = Color(0xFF9AD4B4);
+  static const diffDelFg = Color(0xFFF0A0A0);
+  static const diffGutter = Color(0xFF565C59);
 }
 
 /// Reading/content surfaces (chat, editor, file viewer, diff). Phones use ONE
@@ -51,26 +51,26 @@ class AppColors {
 /// screen); desktop keeps the lighter canvas against the darker sidebar.
 Color get readingBg => kMobile ? AppColors.bg : AppColors.canvas;
 
-// Rounder throughout (soft, modern).
+// Terminal Ink: crisper corners — enough rounding to feel finished, not soft.
 class R {
-  static const card = 16.0;
-  static const md = 12.0; // buttons, inputs, icon buttons
-  static const sm = 9.0; // menu items, list rows
-  static const xs = 7.0; // inner chips
-  static const sheetTop = 22.0;
+  static const card = 10.0;
+  static const md = 8.0; // buttons, inputs, icon buttons
+  static const sm = 6.0; // menu items, list rows
+  static const xs = 5.0; // inner chips
+  static const sheetTop = 14.0;
 }
 
-/// Type helpers — Geist (sans) + Geist Mono, per the handoff recipes.
-// Typographic choice: never go heavier than regular (400). Weight passed by call
-// sites is capped here so the whole app stays light.
-FontWeight _cap(FontWeight w) => w.value > 400 ? FontWeight.w400 : w;
+/// Type helpers — Terminal Ink: IBM Plex Sans for prose, Source Code Pro for
+/// everything technical. Weights are allowed up to semibold for hierarchy, but
+/// capped there so nothing shouts.
+FontWeight _cap(FontWeight w) => w.value > 600 ? FontWeight.w600 : w;
 
 TextStyle sans(double size,
         {FontWeight weight = FontWeight.w400,
         double? height,
         double? spacing,
         Color color = AppColors.fg1}) =>
-    GoogleFonts.geist(
+    GoogleFonts.ibmPlexSans(
       fontSize: size,
       fontWeight: _cap(weight),
       height: height,
@@ -78,23 +78,22 @@ TextStyle sans(double size,
       color: color,
     );
 
-/// Large display titles (page headers). Space Grotesk — a distinct display
-/// face; regular weight, tighter tracking.
+/// Large display titles (page headers) — same face, a notch heavier + tighter.
 TextStyle display(double size, {Color color = AppColors.fg1, double? height}) =>
-    GoogleFonts.spaceGrotesk(
+    GoogleFonts.ibmPlexSans(
       fontSize: size,
-      fontWeight: FontWeight.w400,
+      fontWeight: FontWeight.w600,
       height: height,
-      letterSpacing: -0.5,
+      letterSpacing: -0.3,
       color: color,
     );
 
-// Code / mono font — JetBrains Mono (a dedicated coding typeface).
+// Code / mono font — Source Code Pro.
 TextStyle mono(double size,
         {FontWeight weight = FontWeight.w400,
         double? height,
         Color color = AppColors.fg1}) =>
-    GoogleFonts.jetBrainsMono(
+    GoogleFonts.sourceCodePro(
       fontSize: size,
       fontWeight: _cap(weight),
       height: height,
@@ -102,7 +101,7 @@ TextStyle mono(double size,
     );
 
 /// The code font family name (for widgets that need a raw family, e.g. re_editor).
-String get monoFamily => GoogleFonts.jetBrainsMono().fontFamily ?? 'monospace';
+String get monoFamily => GoogleFonts.sourceCodePro().fontFamily ?? 'monospace';
 
 ThemeData buildAppTheme() {
   final base = ThemeData(
