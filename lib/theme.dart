@@ -63,7 +63,7 @@ class R {
 /// Type helpers — Terminal Ink: IBM Plex Sans for prose, Source Code Pro for
 /// everything technical. Weights are allowed up to semibold for hierarchy, but
 /// capped there so nothing shouts.
-FontWeight _cap(FontWeight w) => w.value > 600 ? FontWeight.w600 : w;
+FontWeight _cap(FontWeight w) => w.value > 500 ? FontWeight.w500 : w;
 
 TextStyle sans(double size,
         {FontWeight weight = FontWeight.w400,
@@ -82,7 +82,7 @@ TextStyle sans(double size,
 TextStyle display(double size, {Color color = AppColors.fg1, double? height}) =>
     GoogleFonts.ibmPlexSans(
       fontSize: size,
-      fontWeight: FontWeight.w600,
+      fontWeight: FontWeight.w500,
       height: height,
       letterSpacing: -0.3,
       color: color,
