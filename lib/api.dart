@@ -168,6 +168,23 @@ class DaemonClient {
         .toList();
   }
 
+  /// Vault: names only ever come back; values only ever go up.
+  Future<List<String>> vaultList() async {
+    final r = await http.get(_uri('/vault'));
+    if (r.statusCode != 200) throw _err('vault', r);
+    return ((jsonDecode(r.body) as Map<String, dynamic>)['names'] as List? ?? const []).cast<String>();
+  }
+
+  Future<void> vaultSet(String name, String value) async {
+    final r = await http.put(_uri('/vault'), headers: _json, body: jsonEncode({'name': name, 'value': value}));
+    if (r.statusCode != 200) throw _err('vault set', r);
+  }
+
+  Future<void> vaultDelete(String name) async {
+    final r = await http.delete(_uri('/vault', {'name': name}));
+    if (r.statusCode != 200) throw _err('vault delete', r);
+  }
+
   /// Set the profile delegated lanes run on. Pass null/'' to clear (delegation
   /// falls back to the active model).
   Future<void> setDelegateProfile(String? name) async {

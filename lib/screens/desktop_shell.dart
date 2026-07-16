@@ -14,6 +14,7 @@ import '../widgets.dart';
 import 'add_instance.dart';
 import 'files.dart';
 import 'models.dart';
+import 'vault.dart';
 import 'session.dart';
 
 /// Desktop two-pane shell: a persistent left sidebar (instances + sessions) and
@@ -1472,6 +1473,14 @@ class _SettingsPanelState extends State<_SettingsPanel> {
                     'Providers & active model',
                     () => presentScreen(context,
                         builder: (_, close) => ModelsScreen(
+                            client: widget.client, onClose: close))),
+                const SizedBox(height: 6),
+                _tile(
+                    'key',
+                    'Vault',
+                    'Secrets the agent can use but never see',
+                    () => presentScreen(context,
+                        builder: (_, close) => VaultScreen(
                             client: widget.client, onClose: close))),
                 if (kCanNotify) ...[
                   const SizedBox(height: 6),
