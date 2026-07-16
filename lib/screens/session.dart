@@ -124,6 +124,26 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   Timer? _reconnectTimer;
   int _reconnectAttempt = 0;
   bool _closed = false;
+  // A message can silently die on a socket that looks alive (dropped network, no
+  // onError/onDone) — it sits in _pending, shown as "sending", forever. Guard:
+  // (1) a fresh connection resends anything still unacked against the authoritative
+  // snapshot; (2) a watchdog forces a resync if _pending doesn't clear in time.
+  bool _freshConn = false;
+  Timer? _ackTimer;
+
+  // Force a fresh snapshot when an optimistic message hasn't been echoed in time —
+  // the reconnect path then resends whatever the server truly never received.
+  void _armAckWatchdog() {
+    _ackTimer?.cancel();
+    if (_closed || _pending.isEmpty) return;
+    _ackTimer = Timer(const Duration(seconds: 7), () {
+      if (!mounted || _closed || _pending.isEmpty) return;
+      final ch = _channel;
+      if (ch != null) {
+        _resync(ch); // tear down → fresh snapshot → unacked _pending resend
+      }
+    });
+  }
   late String _title;
   // Tracks the last status so we can detect running → paused and flush _queued.
   String? _prevStatus;
@@ -233,6 +253,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     if (mounted) setState(() => _connError = null);
     final ch = widget.client.attach(widget.sessionId);
     _channel = ch;
+    // The first snapshot on this socket triggers the unacked-message resend.
+    _freshConn = true;
     _sub = ch.stream.listen(
       (msg) {
         if (!identical(ch, _channel)) return; // stale socket — ignore
@@ -302,9 +324,25 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           } else if (j['wire'] != 'delta') {
             _pending.clear(); // first-ever snapshot: nothing optimistic predates it
           }
+          // First full snapshot after a (re)connect is authoritative: anything
+          // still in _pending was never received by the server — resend it so a
+          // message lost to a network blip actually recovers instead of hanging
+          // as "sending". Reconciliation above already dropped any that DID land.
+          if (_freshConn && j['wire'] != 'delta') {
+            _freshConn = false;
+            for (final m in _pending) {
+              try {
+                ch.sink.add(jsonEncode({'kind': 'user_message', 'value': m}));
+              } catch (_) {
+                _outbox.add(jsonEncode({'kind': 'user_message', 'value': m}));
+              }
+            }
+          }
           setState(() {
             _state = next;
           });
+          // Re-arm (or cancel) the ack watchdog against the new _pending state.
+          _armAckWatchdog();
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (firstLoad) {
               _didInitialScroll = true;
@@ -400,7 +438,14 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       _outbox.add(payload);
       return;
     }
-    ch.sink.add(payload);
+    try {
+      ch.sink.add(payload);
+    } catch (_) {
+      // Sink rejected it though the socket looked alive — queue for the next
+      // healthy connection rather than dropping the message.
+      _outbox.add(payload);
+      _scheduleReconnect(ch);
+    }
   }
 
   void _sendMessage() {
@@ -430,6 +475,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       _attachments.clear();
     });
     _input.clear();
+    _armAckWatchdog(); // recover if this send silently dies on a dead socket
     // Sending is an explicit action — re-pin and jump to the bottom.
     _stickToBottom = true;
     WidgetsBinding.instance.addPostFrameCallback((_) => _toBottom(jump: true));
@@ -572,6 +618,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   void dispose() {
     _closed = true;
     _reconnectTimer?.cancel();
+    _ackTimer?.cancel();
     _sub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     // Only clear the suppression key if this screen still owns it — on a session
