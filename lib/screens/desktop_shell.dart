@@ -12,7 +12,6 @@ import '../store.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'add_instance.dart';
-import 'design_preview.dart';
 import 'files.dart';
 import 'models.dart';
 import 'session.dart';
@@ -1134,13 +1133,6 @@ class _SidebarState extends State<_Sidebar> {
                 tooltip: 'Refresh',
                 onTap:
                     hasClient && !_loading ? widget.onRefreshSessions : null),
-            // Temporary: swipeable preview of the three redesign directions.
-            IconBtn('sliders',
-                size: 30,
-                iconSize: 15,
-                tooltip: 'Design preview',
-                onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const DesignPreviewScreen()))),
             IconBtn('settings',
                 size: kMobile ? 38 : 30,
                 iconSize: kMobile ? 19 : 15,

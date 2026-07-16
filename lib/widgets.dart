@@ -234,12 +234,10 @@ MarkdownStyleSheet markdownStyle(BuildContext context) {
     h2: sans(18.5, weight: FontWeight.w600, height: 1.3, color: AppColors.fg1),
     h3: sans(16.5, weight: FontWeight.w600, height: 1.3, color: AppColors.fg1),
     code: mono(13.5, color: AppColors.fg1).copyWith(backgroundColor: AppColors.surface2),
-    codeblockPadding: const EdgeInsets.all(12),
-    codeblockDecoration: BoxDecoration(
-      color: AppColors.surface2,
-      border: Border.all(color: AppColors.border),
-      borderRadius: BorderRadius.circular(R.sm),
-    ),
+    // No block chrome here: CodeBlockBuilder draws the container (with the copy
+    // chip) itself — a decoration here would nest a second box around it.
+    codeblockPadding: EdgeInsets.zero,
+    codeblockDecoration: const BoxDecoration(),
     blockquote: sans(15.5, height: 1.5, color: AppColors.fg2),
     blockquoteDecoration: BoxDecoration(
       color: AppColors.surface2,
