@@ -64,6 +64,54 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   // handler; count-based, not text-based, so daemon-side trimming can't strand one).
   static int _userEchoCount(List<Map<String, dynamic>> events) =>
       events.where((e) => e['kind'] == 'user_input' || e['kind'] == 'steer').length;
+  // Big-paste interception: a paste arrives as ONE controller change, so an
+  // insertion this large can't be typing — pull it out of the field and attach
+  // it as a text file instead (through the same _ingest pipeline as any file).
+  static const _pasteAttachChars = 1000;
+  static const _pasteAttachLines = 15;
+  String _lastInput = '';
+  bool _restoringInput = false;
+  int _pasteN = 0;
+
+  void _interceptBigPaste() {
+    if (_restoringInput) return;
+    final prev = _lastInput;
+    final now = _input.text;
+    if (now.length - prev.length < _pasteAttachChars) {
+      // Also catch shorter-but-many-line pastes cheaply.
+      if (now.length <= prev.length || !now.contains('\n')) {
+        _lastInput = now;
+        return;
+      }
+    }
+    // Single-change diff: common prefix + suffix bound the inserted span.
+    var p = 0;
+    while (p < prev.length && p < now.length && prev[p] == now[p]) {
+      p++;
+    }
+    var s = 0;
+    while (s < prev.length - p && s < now.length - p && prev[prev.length - 1 - s] == now[now.length - 1 - s]) {
+      s++;
+    }
+    final inserted = now.substring(p, now.length - s);
+    final lines = '\n'.allMatches(inserted).length + 1;
+    if (inserted.length < _pasteAttachChars && lines < _pasteAttachLines) {
+      _lastInput = now;
+      return;
+    }
+    // Restore the field to what it was without the pasted wall, cursor at the seam.
+    _restoringInput = true;
+    _input.value = TextEditingValue(
+      text: prev,
+      selection: TextSelection.collapsed(offset: p.clamp(0, prev.length)),
+    );
+    _restoringInput = false;
+    _lastInput = prev;
+    final name = 'paste-${++_pasteN}.txt';
+    _ingest([(name: name, localPath: null, readBytes: () async => Uint8List.fromList(utf8.encode(inserted)))]);
+    _toast('Pasted text attached ($lines lines)');
+  }
+
   // Pending attachments (images + files, up to 10): each uploads to the daemon
   // and is referenced in the next message. Images → read_image, files → read.
   final List<_Attachment> _attachments = [];
@@ -83,6 +131,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   void initState() {
     super.initState();
     _title = widget.title;
+    _lastInput = _input.text;
+    _input.addListener(_interceptBigPaste);
     WidgetsBinding.instance.addObserver(this);
     _connect();
     _loadModel();
