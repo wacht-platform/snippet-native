@@ -26,21 +26,32 @@ class DesktopShell extends StatefulWidget {
   State<DesktopShell> createState() => _DesktopShellState();
 }
 
-/// One open tab in the shell — a live session on a given instance. (Files will
-/// join this list later; for now every tab is a chat session.)
+/// One open tab in the shell — a live chat session or an opened file, on a
+/// given instance.
 class _ShellTab {
   final DaemonClient client;
   final String instanceUrl;
-  final String sessionId;
+  final String? sessionId;
+  final String? filePath;
   String title;
   String? profile;
-  _ShellTab({
+  _ShellTab.session({
     required this.client,
     required this.instanceUrl,
     required this.sessionId,
     required this.title,
     this.profile,
-  });
+  }) : filePath = null;
+  _ShellTab.file({
+    required this.client,
+    required this.instanceUrl,
+    required this.filePath,
+    required this.title,
+  })  : sessionId = null,
+        profile = null;
+  bool get isFile => filePath != null;
+  String get key =>
+      isFile ? '$instanceUrl|file|$filePath' : '$instanceUrl|$sessionId';
 }
 
 class _DesktopShellState extends State<DesktopShell> {
@@ -252,7 +263,7 @@ class _DesktopShellState extends State<DesktopShell> {
         _tabs[existing].profile = profile;
         _activeIndex = existing;
       } else {
-        _tabs.add(_ShellTab(
+        _tabs.add(_ShellTab.session(
             client: client,
             instanceUrl: url,
             sessionId: id,
@@ -262,6 +273,26 @@ class _DesktopShellState extends State<DesktopShell> {
       }
     });
     _syncPage();
+  }
+
+  void _openFileTab(DaemonClient client, String url, String path, String name) {
+    final existing = _tabs.indexWhere(
+        (t) => t.isFile && t.instanceUrl == url && t.filePath == path);
+    setState(() {
+      if (existing >= 0) {
+        _activeIndex = existing;
+      } else {
+        _tabs.add(_ShellTab.file(
+            client: client, instanceUrl: url, filePath: path, title: name));
+        _activeIndex = _tabs.length - 1;
+      }
+    });
+    _syncPage();
+  }
+
+  void _closeTabByKey(String key) {
+    final i = _tabs.indexWhere((t) => t.key == key);
+    if (i >= 0) _closeTab(i);
   }
 
   // Full-screen on phones (QR scan); a compact natural-height dialog on
@@ -443,15 +474,25 @@ class _DesktopShellState extends State<DesktopShell> {
               itemBuilder: (_, i) {
                 final t = _tabs[i];
                 return _KeepAlive(
-                  child: SessionScreen(
-                    key: ValueKey('${t.instanceUrl}|${t.sessionId}'),
-                    client: t.client,
-                    sessionId: t.sessionId,
-                    title: t.title,
-                    profile: t.profile,
-                    embedded: true,
-                    onMenu: null,
-                  ),
+                  child: t.isFile
+                      ? FileViewer(
+                          key: ValueKey(t.key),
+                          client: t.client,
+                          path: t.filePath!,
+                          name: t.title,
+                          onClose: () => _closeTabByKey(t.key),
+                        )
+                      : SessionScreen(
+                          key: ValueKey(t.key),
+                          client: t.client,
+                          sessionId: t.sessionId!,
+                          title: t.title,
+                          profile: t.profile,
+                          embedded: true,
+                          onMenu: null,
+                          onOpenFileTab: (path, name) => _openFileTab(
+                              t.client, t.instanceUrl, path, name),
+                        ),
                 );
               },
             ),
@@ -509,13 +550,17 @@ class _DesktopShellState extends State<DesktopShell> {
               color: active ? AppColors.border : Colors.transparent),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: active ? AppColors.accent : AppColors.fg4),
-          ),
+          if (t.isFile)
+            AppIcon('file',
+                size: 12, color: active ? AppColors.accent : AppColors.fg4)
+          else
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: active ? AppColors.accent : AppColors.fg4),
+            ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(title,

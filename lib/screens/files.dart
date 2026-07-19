@@ -29,7 +29,8 @@ class FileExplorer extends StatefulWidget {
   final String? start; // initial folder (null = the daemon's home dir)
   final VoidCallback? onClose; // dismiss when hosted in a desktop panel
   final void Function(String folder)? onNewChat; // start a chat in the current folder
-  const FileExplorer({super.key, required this.client, this.title = 'Files', this.start, this.onClose, this.onNewChat});
+  final void Function(String path, String name)? onOpenFile; // open as a shell tab
+  const FileExplorer({super.key, required this.client, this.title = 'Files', this.start, this.onClose, this.onNewChat, this.onOpenFile});
   @override
   State<FileExplorer> createState() => _FileExplorerState();
 }
@@ -145,10 +146,18 @@ class _FileExplorerState extends State<FileExplorer> {
     }
   }
 
-  void _openFile(FsEntry e) => presentScreen(
-        context,
-        builder: (_, close) => FileViewer(client: widget.client, path: e.path, name: e.name, onClose: close),
-      );
+  void _openFile(FsEntry e) {
+    final open = widget.onOpenFile;
+    if (open != null) {
+      (widget.onClose ?? () => Navigator.of(context).pop())();
+      open(e.path, e.name);
+      return;
+    }
+    presentScreen(
+      context,
+      builder: (_, close) => FileViewer(client: widget.client, path: e.path, name: e.name, onClose: close),
+    );
+  }
 
   // Git for the current folder directly — no session required (the daemon runs
   // git in that directory; non-repos show a "No git here" message).

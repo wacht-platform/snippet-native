@@ -31,7 +31,10 @@ class SessionScreen extends StatefulWidget {
   final bool embedded;
   /// When embedded in a narrow desktop shell, opens the collapsed sidebar drawer.
   final VoidCallback? onMenu;
-  const SessionScreen({super.key, required this.client, required this.sessionId, required this.title, this.profile, this.embedded = false, this.onMenu});
+  /// When set, opening a file from the Files browser opens it as a shell tab
+  /// instead of pushing an editor route.
+  final void Function(String path, String name)? onOpenFileTab;
+  const SessionScreen({super.key, required this.client, required this.sessionId, required this.title, this.profile, this.embedded = false, this.onMenu, this.onOpenFileTab});
   @override
   State<SessionScreen> createState() => _SessionScreenState();
 }
@@ -1006,7 +1009,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       item('git-branch', 'Git', () => presentScreen(context, builder: (_, close) => GitScreen(client: widget.client, sessionId: widget.sessionId, onClose: close))),
       item('folder', 'Browse', () {
         final name = lastPathSegment(ws, ifEmpty: 'Files');
-        presentScreen(context, builder: (_, close) => FileExplorer(client: widget.client, title: name, start: ws.isEmpty ? null : ws, onClose: close));
+        presentScreen(context, builder: (_, close) => FileExplorer(client: widget.client, title: name, start: ws.isEmpty ? null : ws, onClose: close, onOpenFile: widget.onOpenFileTab));
       }),
       item('terminal', 'Run command', _showExec),
       const PopupMenuDivider(),
@@ -1051,7 +1054,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             builder: (_, close) => GitScreen(client: widget.client, sessionId: widget.sessionId, onClose: close)))),
         _actionTile('folder', 'Open files', onTap: () => run(() {
           final name = lastPathSegment(ws, ifEmpty: 'Files');
-          presentScreen(context, builder: (_, close) => FileExplorer(client: widget.client, title: name, start: ws.isEmpty ? null : ws, onClose: close));
+          presentScreen(context, builder: (_, close) => FileExplorer(client: widget.client, title: name, start: ws.isEmpty ? null : ws, onClose: close, onOpenFile: widget.onOpenFileTab));
         })),
         _actionTile('terminal', 'Run command', onTap: () => run(_showExec)),
         const SizedBox(height: 12),
