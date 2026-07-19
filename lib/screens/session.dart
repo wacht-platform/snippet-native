@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -121,7 +120,6 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   final List<_Attachment> _attachments = [];
   bool get _anyUploading => _attachments.any((a) => a.uploading);
   static const int _maxAttachments = 10;
-  bool _dragOver = false; // desktop drag-and-drop highlight
   bool _didInitialScroll = false;
   // Auto-reconnect: backoff timer + attempt counter; _closed stops retries on leave.
   Timer? _reconnectTimer;
@@ -812,38 +810,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         ]),
       ),
     );
-    if (kMobile) return scaffold;
-    // Desktop: drop files/images/screenshots anywhere in the session to attach.
-    return DropTarget(
-      onDragEntered: (_) => setState(() => _dragOver = true),
-      onDragExited: (_) => setState(() => _dragOver = false),
-      onDragDone: (d) {
-        setState(() => _dragOver = false);
-        final items = d.files.map((x) => (name: x.name, localPath: x.path, readBytes: x.readAsBytes)).toList();
-        if (items.isNotEmpty) _ingest(items);
-      },
-      child: Stack(children: [
-        scaffold,
-        if (_dragOver)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Container(
-                color: AppColors.accentBg,
-                alignment: Alignment.center,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  decoration: BoxDecoration(color: AppColors.surface2, borderRadius: BorderRadius.circular(R.md), border: Border.all(color: AppColors.accent)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const AppIcon('upload', size: 18, color: AppColors.accent),
-                    const SizedBox(width: 8),
-                    Text('Drop to attach', style: sans(13, color: AppColors.fg1)),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-      ]),
-    );
+    return scaffold;
   }
 
   Future<void> _renameCurrent() async {
