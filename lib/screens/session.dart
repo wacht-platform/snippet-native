@@ -1906,18 +1906,14 @@ class _NoteLineState extends State<_NoteLine> {
           borderRadius: BorderRadius.circular(R.md),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: BoxDecoration(
-              color: AppColors.accentBg,
-              borderRadius: BorderRadius.circular(R.md),
-            ),
+            padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SelectableText(
                   text,
                   maxLines: (!long || _open) ? null : 3,
-                  style: sans(13, height: 1.5, color: AppColors.fg2),
+                  style: sans(13, height: 1.5, color: AppColors.fg3),
                 ),
                 if (long) ...[
                   const SizedBox(height: 4),
