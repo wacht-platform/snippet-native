@@ -63,6 +63,8 @@ class _DesktopShellState extends State<DesktopShell> {
   final List<_ShellTab> _tabs = [];
   int _activeIndex = -1;
   final PageController _pageController = PageController();
+  final ScrollController _stripController = ScrollController();
+  final Map<String, GlobalKey> _chipKeys = {};
   _ShellTab? get _activeTab =>
       (_activeIndex >= 0 && _activeIndex < _tabs.length) ? _tabs[_activeIndex] : null;
   String? get _sessionId => _activeTab?.sessionId;
@@ -99,6 +101,7 @@ class _DesktopShellState extends State<DesktopShell> {
   void dispose() {
     _sessionsTicker?.cancel();
     _pageController.dispose();
+    _stripController.dispose();
     if (onNotifTap == _onNotif) onNotifTap = null;
     super.dispose();
   }
@@ -108,7 +111,96 @@ class _DesktopShellState extends State<DesktopShell> {
       if (_pageController.hasClients && _activeIndex >= 0) {
         _pageController.jumpToPage(_activeIndex);
       }
+      _scrollStripToActive();
     });
+  }
+
+  // Bring the active tab's chip into view in the strip.
+  void _scrollStripToActive() {
+    final t = _activeTab;
+    if (t == null) return;
+    final ctx = _chipKeys[t.key]?.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut);
+    }
+  }
+
+  void _closeOthers(int keep) {
+    if (keep < 0 || keep >= _tabs.length) return;
+    final kept = _tabs[keep];
+    setState(() {
+      _tabs
+        ..clear()
+        ..add(kept);
+      _activeIndex = 0;
+    });
+    _syncPage();
+  }
+
+  void _closeAllTabs() {
+    setState(() {
+      _tabs.clear();
+      _activeIndex = -1;
+    });
+  }
+
+  void _tabMenu(int i) {
+    if (i < 0 || i >= _tabs.length) return;
+    final t = _tabs[i];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface1,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(R.card))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+            child: Row(children: [
+              AppIcon(t.isFile ? 'file' : 'terminal',
+                  size: 15, color: AppColors.fg3),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(t.title.isEmpty ? '(untitled)' : t.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: sans(14, color: AppColors.fg1)),
+              ),
+            ]),
+          ),
+          const Divider(height: 1, color: AppColors.border),
+          _tabMenuItem(ctx, 'x', 'Close tab', () => _closeTab(i)),
+          if (_tabs.length > 1)
+            _tabMenuItem(ctx, 'copy', 'Close other tabs', () => _closeOthers(i)),
+          if (_tabs.length > 1)
+            _tabMenuItem(ctx, 'trash', 'Close all tabs', _closeAllTabs,
+                danger: true),
+        ]),
+      ),
+    );
+  }
+
+  Widget _tabMenuItem(BuildContext ctx, String icon, String label,
+      VoidCallback onTap,
+      {bool danger = false}) {
+    final color = danger ? AppColors.danger : AppColors.fg1;
+    return InkWell(
+      onTap: () {
+        Navigator.of(ctx).pop();
+        onTap();
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(children: [
+          AppIcon(icon, size: 16, color: color),
+          const SizedBox(width: 12),
+          Text(label, style: sans(13.5, color: color)),
+        ]),
+      ),
+    );
   }
 
   void _closeTab(int i) {
@@ -470,7 +562,10 @@ class _DesktopShellState extends State<DesktopShell> {
             child: PageView.builder(
               controller: _pageController,
               itemCount: _tabs.length,
-              onPageChanged: (i) => setState(() => _activeIndex = i),
+              onPageChanged: (i) {
+                setState(() => _activeIndex = i);
+                _scrollStripToActive();
+              },
               itemBuilder: (_, i) {
                 final t = _tabs[i];
                 return _KeepAlive(
@@ -518,6 +613,7 @@ class _DesktopShellState extends State<DesktopShell> {
               onTap: onMenu),
         Expanded(
           child: ListView.builder(
+            controller: _stripController,
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 4),
             itemCount: _tabs.length,
@@ -537,9 +633,12 @@ class _DesktopShellState extends State<DesktopShell> {
     final t = _tabs[i];
     final active = i == _activeIndex;
     final title = t.title.isEmpty ? '(untitled)' : t.title;
+    final key = _chipKeys.putIfAbsent(t.key, () => GlobalKey());
     return GestureDetector(
       onTap: () => _activateTab(i),
+      onLongPress: () => _tabMenu(i),
       child: Container(
+        key: key,
         margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 3),
         padding: const EdgeInsets.only(left: 11, right: 5),
         constraints: const BoxConstraints(maxWidth: 210),
