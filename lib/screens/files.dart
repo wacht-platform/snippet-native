@@ -369,96 +369,15 @@ class _FileViewerState extends State<FileViewer> {
   bool get _isVideo => _videoExts.contains(_ext);
   bool get _isMedia => _isImage || _isVideo;
 
-  // Download-complete sheet (Android): a real modal route, so Open/Share always
-  // receive taps. Picks the action via the sheet's return value, then acts once
-  // it has closed.
-  Future<void> _downloadDoneSheet(String path) async {
-    void shareFile() => Share.shareXFiles([XFile(path, name: widget.name)]);
-    final action = await showAppSheet<String>(context, title: 'Saved to Downloads', child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(widget.name, style: sans(13, height: 1.4, color: AppColors.fg2)),
-        const SizedBox(height: 16),
-        Btn('Open', icon: 'file', full: true, onTap: () => Navigator.pop(context, 'open')),
-        const SizedBox(height: 8),
-        Btn('Share', icon: 'upload', variant: BtnVariant.secondary, full: true, onTap: () => Navigator.pop(context, 'share')),
-        const SizedBox(height: 4),
-      ],
-    ));
-    if (action == 'open') {
-      final r = await OpenFilex.open(path);
-      if (r.type != ResultType.done) shareFile(); // nothing handles it → share
-    } else if (action == 'share') {
-      shareFile();
-    }
-  }
-
   Future<void> _download() async {
     setState(() => _downloading = true);
     try {
-      final bytes = await widget.client.downloadFile(widget.path);
-      // Keep the original extension so the OS recognizes the file type (e.g. .docx,
-      // not a generic binary).
-      final dot = widget.name.lastIndexOf('.');
-      final ext = dot > 0 ? widget.name.substring(dot + 1).toLowerCase() : '';
-      String? message;
-      if (kMobile) {
-        // A persistent copy backs Open / Share and the tappable notification.
-        // It MUST live outside the temp/cache dir: on Android getTemporaryDirectory
-        // and the cache dir are the same folder, and MediaStore deletes its temp
-        // after saving — which was silently deleting this file too. The support
-        // (files) dir is distinct and covered by the share/open FileProviders.
-        final openFile = File('${(await getApplicationSupportDirectory()).path}/${widget.name}');
-        await openFile.writeAsBytes(bytes);
-        Future<String?> shareIt() async {
-          final res = await Share.shareXFiles([XFile(openFile.path, name: widget.name)]);
-          return res.status == ShareResultStatus.success ? 'Saved ${widget.name}' : null;
-        }
-        if (Platform.isAndroid) {
-          // Android: save straight into the public Downloads folder via MediaStore
-          // — no share sheet. Falls back to the share sheet if that ever fails.
-          var saved = false;
-          try {
-            final storeTemp = File('${(await getTemporaryDirectory()).path}/${widget.name}');
-            await storeTemp.writeAsBytes(bytes);
-            await MediaStore.ensureInitialized();
-            MediaStore.appFolder = 'Snippet';
-            final info = await MediaStore().saveFile(
-              tempFilePath: storeTemp.path,
-              dirType: DirType.download,
-              dirName: DirName.download,
-              relativePath: FilePath.root, // Downloads root, not a subfolder
-            );
-            saved = info != null;
-          } catch (_) {
-            saved = false;
-          }
-          if (saved) {
-            // Native notification (tap → open) + an in-app sheet with Open/Share.
-            // A sheet (a real modal route) is used rather than an overlay toast:
-            // the file viewer is itself a modal, and overlay toasts layered over a
-            // modal barrier don't reliably receive taps.
-            notifyDownload(widget.name, openFile.path);
-            if (mounted) _downloadDoneSheet(openFile.path);
-            message = null; // the sheet replaces the plain toast
-          } else {
-            message = await shareIt();
-          }
-        } else {
-          // iOS: the share sheet ("Save to Files") is the idiomatic save path.
-          message = await shareIt();
-        }
-      } else {
-        // Desktop: the save panel returns a path (no write); write the bytes
-        // ourselves and re-append the extension if the panel dropped it.
-        final saved = await FilePicker.platform.saveFile(fileName: widget.name);
-        if (saved != null) {
-          final out = (ext.isNotEmpty && !saved.toLowerCase().endsWith('.$ext')) ? '$saved.$ext' : saved;
-          await File(out).writeAsBytes(bytes);
-          message = 'Downloaded ${widget.name}';
-        }
-      }
+      final message = await downloadRemoteFile(
+        context,
+        widget.client,
+        path: widget.path,
+        name: widget.name,
+      );
       if (!mounted) return;
       setState(() => _downloading = false);
       if (message != null) toast(context, message);
@@ -668,5 +587,94 @@ class _VideoViewState extends State<_VideoView> {
     }
     // Chewie sizes the video from its own aspectRatio; letterbox on black.
     return ColoredBox(color: Colors.black, child: Chewie(controller: ch));
+  }
+}
+
+/// Download a remote daemon path to the device. Used by the file viewer and by
+/// agent `present_file` cards in chat. Returns a short status message, or null
+/// when a modal/notification already covered the outcome.
+Future<String?> downloadRemoteFile(
+  BuildContext context,
+  DaemonClient client, {
+  required String path,
+  required String name,
+}) async {
+  final bytes = await client.downloadFile(path);
+  final dot = name.lastIndexOf('.');
+  final ext = dot > 0 ? name.substring(dot + 1).toLowerCase() : '';
+  if (kMobile) {
+    final openFile = File('${(await getApplicationSupportDirectory()).path}/$name');
+    await openFile.writeAsBytes(bytes);
+    Future<String?> shareIt() async {
+      final res = await Share.shareXFiles([XFile(openFile.path, name: name)]);
+      return res.status == ShareResultStatus.success ? 'Saved $name' : null;
+    }
+
+    if (Platform.isAndroid) {
+      var saved = false;
+      try {
+        final storeTemp = File('${(await getTemporaryDirectory()).path}/$name');
+        await storeTemp.writeAsBytes(bytes);
+        await MediaStore.ensureInitialized();
+        MediaStore.appFolder = 'Snippet';
+        final info = await MediaStore().saveFile(
+          tempFilePath: storeTemp.path,
+          dirType: DirType.download,
+          dirName: DirName.download,
+          relativePath: FilePath.root,
+        );
+        saved = info != null;
+      } catch (_) {
+        saved = false;
+      }
+      if (saved) {
+        notifyDownload(name, openFile.path);
+        if (context.mounted) {
+          await _downloadDoneSheetFor(context, name, openFile.path);
+        }
+        return null;
+      }
+      return shareIt();
+    }
+    return shareIt();
+  }
+
+  final saved = await FilePicker.platform.saveFile(fileName: name);
+  if (saved == null) return null;
+  final out =
+      (ext.isNotEmpty && !saved.toLowerCase().endsWith('.$ext')) ? '$saved.$ext' : saved;
+  await File(out).writeAsBytes(bytes);
+  return 'Downloaded $name';
+}
+
+Future<void> _downloadDoneSheetFor(
+    BuildContext context, String name, String path) async {
+  void shareFile() => Share.shareXFiles([XFile(path, name: name)]);
+  final action = await showAppSheet<String>(context,
+      title: 'Saved to Downloads',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(name, style: sans(13, height: 1.4, color: AppColors.fg2)),
+          const SizedBox(height: 16),
+          Btn('Open',
+              icon: 'file',
+              full: true,
+              onTap: () => Navigator.pop(context, 'open')),
+          const SizedBox(height: 8),
+          Btn('Share',
+              icon: 'upload',
+              variant: BtnVariant.secondary,
+              full: true,
+              onTap: () => Navigator.pop(context, 'share')),
+          const SizedBox(height: 4),
+        ],
+      ));
+  if (action == 'open') {
+    final r = await OpenFilex.open(path);
+    if (r.type != ResultType.done) shareFile();
+  } else if (action == 'share') {
+    shareFile();
   }
 }

@@ -1339,7 +1339,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         case 'note':
           endTools();
           final entry = _s(e['entry']);
-          out.add(_NoteLine(entry, onTap: () => _showNote(entry)));
+          out.add(_NoteLine(entry));
         case 'system_decision':
           endTools();
           out.add(SystemRow(step: _s(e['step']), reasoning: _s(e['reasoning'])));
@@ -1387,36 +1387,81 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     return out;
   }
 
-  /// A file the agent handed over (present_file): an openable card — tap to
-  /// view it in the editor.
+  /// A file the agent handed over (`present_file`): open in the editor, or
+  /// download to the device.
   Widget _presentedFileCard(String path, String caption) {
     final name = path.split('/').last;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: AppCard(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        onTap: () => presentScreen(
-          context,
-          builder: (_, close) => EditorScreen(client: widget.client, path: path, name: name, onClose: close),
-        ),
         child: Row(children: [
           Container(
             width: 34,
             height: 34,
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: AppColors.accentBg, borderRadius: BorderRadius.circular(R.sm)),
+            decoration: BoxDecoration(
+                color: AppColors.accentBg,
+                borderRadius: BorderRadius.circular(R.sm)),
             child: const AppIcon('file', size: 16, color: AppColors.accent),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(13, color: AppColors.fg1)),
-              const SizedBox(height: 2),
-              Text(caption.isNotEmpty ? caption : path, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(11.5, color: AppColors.fg3)),
-            ]),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (widget.onOpenFileTab != null) {
+                  widget.onOpenFileTab!(path, name);
+                } else {
+                  presentScreen(
+                    context,
+                    builder: (_, close) => EditorScreen(
+                        client: widget.client,
+                        path: path,
+                        name: name,
+                        onClose: close),
+                  );
+                }
+              },
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: mono(13, color: AppColors.fg1)),
+                    const SizedBox(height: 2),
+                    Text(caption.isNotEmpty ? caption : path,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: sans(11.5, color: AppColors.fg3)),
+                  ]),
+            ),
           ),
-          const SizedBox(width: 8),
-          const AppIcon('chevron-right', size: 16, color: AppColors.fg4),
+          const SizedBox(width: 6),
+          TextButton(
+            onPressed: () async {
+              try {
+                toast(context, 'Downloading $name…');
+                final msg = await downloadRemoteFile(context, widget.client,
+                    path: path, name: name);
+                if (msg != null && mounted) toast(context, msg);
+              } catch (e) {
+                if (mounted) toast(context, '$e', danger: true);
+              }
+            },
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 0),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              foregroundColor: AppColors.accentFg,
+              backgroundColor: AppColors.accent,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(R.sm)),
+            ),
+            child: Text('Download',
+                style: sans(12, weight: FontWeight.w600, color: AppColors.accentFg)),
+          ),
         ]),
       ),
     );
@@ -1427,11 +1472,6 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   // Meta-tools have dedicated event rendering, so their generic tool lines are skipped.
   bool _isMetaTool(String n) =>
       n == 'note' || n == 'ask_user' || n == 'delegate_task' || n == 'complete_goal' || n == 'monitor' || n == 'present_file';
-
-  void _showNote(String text) {
-    showAppSheet(context, title: 'Note', child: SelectableText(text, style: sans(13.5, height: 1.5, color: AppColors.fg1)));
-  }
-
 
   Future<void> _switchModel() async {
     ServerConfig cfg;
@@ -1842,35 +1882,52 @@ class _ApprovalBarState extends State<_ApprovalBar> {
   }
 }
 
-/// An agent note: a clean, left-aligned, readable line (preview up to 4 lines)
-/// that opens the full note in a sheet on tap — not a raw-JSON tool drawer.
-class _NoteLine extends StatelessWidget {
+class _NoteLine extends StatefulWidget {
   final String text;
-  final VoidCallback onTap;
-  const _NoteLine(this.text, {required this.onTap});
+  const _NoteLine(this.text);
+  @override
+  State<_NoteLine> createState() => _NoteLineState();
+}
+
+class _NoteLineState extends State<_NoteLine> {
+  bool _open = false;
+
   @override
   Widget build(BuildContext context) {
+    final text = widget.text;
+    final long = text.split('\n').length > 3 || text.length > 220;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(R.sm),
+        borderRadius: BorderRadius.circular(R.md),
         child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(R.sm),
+          onTap: long ? () => setState(() => _open = !_open) : null,
+          borderRadius: BorderRadius.circular(R.md),
           child: Container(
-            padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             decoration: BoxDecoration(
-              color: AppColors.surface1,
-              borderRadius: BorderRadius.circular(R.sm),
-              border: const Border(left: BorderSide(color: AppColors.border2, width: 2)),
+              color: AppColors.accentBg,
+              borderRadius: BorderRadius.circular(R.md),
             ),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Padding(padding: EdgeInsets.only(top: 1.5), child: AppIcon('edit', size: 12, color: AppColors.fg4)),
-              const SizedBox(width: 8),
-              Expanded(child: Text(text, maxLines: 4, overflow: TextOverflow.ellipsis, style: sans(12.5, height: 1.45, color: AppColors.fg2))),
-              const Padding(padding: EdgeInsets.only(left: 4, top: 1), child: AppIcon('chevron-right', size: 14, color: AppColors.fg4)),
-            ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(
+                  text,
+                  maxLines: (!long || _open) ? null : 3,
+                  style: sans(13, height: 1.5, color: AppColors.fg2),
+                ),
+                if (long) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _open ? 'collapse' : 'expand',
+                    style: mono(10.5, color: AppColors.fg4),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),

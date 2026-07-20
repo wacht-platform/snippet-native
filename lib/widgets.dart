@@ -233,7 +233,10 @@ MarkdownStyleSheet markdownStyle(BuildContext context) {
     h1Padding: const EdgeInsets.only(top: 6, bottom: 2),
     h2: sans(18.5, weight: FontWeight.w600, height: 1.3, color: AppColors.fg1),
     h3: sans(16.5, weight: FontWeight.w600, height: 1.3, color: AppColors.fg1),
-    code: mono(13.5, color: AppColors.fg1).copyWith(backgroundColor: AppColors.surface2),
+    // Inline `code`: mono + accent wash so it reads as code, not plain prose.
+    code: mono(13.5, color: AppColors.accent).copyWith(
+      backgroundColor: AppColors.accentBg,
+    ),
     // No block chrome here: CodeBlockBuilder draws the container (with the copy
     // chip) itself — a decoration here would nest a second box around it.
     codeblockPadding: EdgeInsets.zero,
@@ -251,7 +254,8 @@ MarkdownStyleSheet markdownStyle(BuildContext context) {
 }
 
 /// Fenced code blocks get a dedicated small copy button (top-right) and
-/// horizontal scrolling; inline code falls through to the default styling.
+/// horizontal scrolling. Inline `code` gets an explicit mono + accent pill so
+/// it never falls back to plain body text when the stylesheet is ignored.
 class CodeBlockBuilder extends MarkdownElementBuilder {
   @override
   Widget? visitElementAfterWithContext(
@@ -259,7 +263,19 @@ class CodeBlockBuilder extends MarkdownElementBuilder {
     final raw = element.textContent;
     final isBlock = raw.contains('\n') ||
         (element.attributes['class'] ?? '').startsWith('language-');
-    if (!isBlock) return null; // inline `code` keeps the default look
+    if (!isBlock) {
+      // Inline code — wrap in a pill. Prefer element text over preferredStyle
+      // alone so single-backtick spans always look like code.
+      final code = raw;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(
+          color: AppColors.accentBg,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(code, style: mono(13.5, color: AppColors.accent)),
+      );
+    }
     final code = raw.endsWith('\n') ? raw.substring(0, raw.length - 1) : raw;
     return _MdCodeBlock(code: code);
   }

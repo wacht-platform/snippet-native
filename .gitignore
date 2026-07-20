@@ -51,3 +51,6 @@ android/.gradle/
 
 # Android Gradle build output
 /android/build/
+
+# Local release artifacts
+dist/
