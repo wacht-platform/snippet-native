@@ -559,37 +559,52 @@ class _DesktopShellState extends State<DesktopShell> {
           final mq = MediaQuery.of(ctx);
           return MediaQuery(
             data: mq.copyWith(size: Size(c.maxWidth, c.maxHeight)),
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: _tabs.length,
-              onPageChanged: (i) {
-                setState(() => _activeIndex = i);
-                _scrollStripToActive();
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                if (onMenu != null && _activeIndex == 0) {
+                  if (notification is OverscrollNotification &&
+                      notification.overscroll < -6.0) {
+                    onMenu();
+                  } else if (notification is ScrollUpdateNotification &&
+                      (notification.metrics.pixels <= 0) &&
+                      (notification.scrollDelta ?? 0) < -6.0) {
+                    onMenu();
+                  }
+                }
+                return false;
               },
-              itemBuilder: (_, i) {
-                final t = _tabs[i];
-                return _KeepAlive(
-                  child: t.isFile
-                      ? FileViewer(
-                          key: ValueKey(t.key),
-                          client: t.client,
-                          path: t.filePath!,
-                          name: t.title,
-                          onClose: () => _closeTabByKey(t.key),
-                        )
-                      : SessionScreen(
-                          key: ValueKey(t.key),
-                          client: t.client,
-                          sessionId: t.sessionId!,
-                          title: t.title,
-                          profile: t.profile,
-                          embedded: true,
-                          onMenu: null,
-                          onOpenFileTab: (path, name) => _openFileTab(
-                              t.client, t.instanceUrl, path, name),
-                        ),
-                );
-              },
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: _tabs.length,
+                onPageChanged: (i) {
+                  setState(() => _activeIndex = i);
+                  _scrollStripToActive();
+                },
+                itemBuilder: (_, i) {
+                  final t = _tabs[i];
+                  return _KeepAlive(
+                    child: t.isFile
+                        ? FileViewer(
+                            key: ValueKey(t.key),
+                            client: t.client,
+                            path: t.filePath!,
+                            name: t.title,
+                            onClose: () => _closeTabByKey(t.key),
+                          )
+                        : SessionScreen(
+                            key: ValueKey(t.key),
+                            client: t.client,
+                            sessionId: t.sessionId!,
+                            title: t.title,
+                            profile: t.profile,
+                            embedded: true,
+                            onMenu: null,
+                            onOpenFileTab: (path, name) => _openFileTab(
+                                t.client, t.instanceUrl, path, name),
+                          ),
+                  );
+                },
+              ),
             ),
           );
         }),
