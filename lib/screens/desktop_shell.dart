@@ -598,8 +598,10 @@ class _DesktopShellState extends State<DesktopShell> {
   }
 
   Widget _tabStrip(VoidCallback? onMenu) {
+    // Match the mobile session header: this is primary phone navigation, so the
+    // row and its leading menu button need a full, comfortable touch target.
     return Container(
-      height: kMobile ? 46 : 40,
+      height: kMobile ? 56 : 40,
       decoration: const BoxDecoration(
         color: AppColors.bg,
         border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -607,8 +609,8 @@ class _DesktopShellState extends State<DesktopShell> {
       child: Row(children: [
         if (onMenu != null)
           IconBtn('sidebar',
-              size: kMobile ? 44 : 38,
-              iconSize: kMobile ? 23 : 18,
+              size: kMobile ? 52 : 38,
+              iconSize: kMobile ? 28 : 18,
               tooltip: 'Sidebar',
               onTap: onMenu),
         Expanded(
@@ -621,8 +623,8 @@ class _DesktopShellState extends State<DesktopShell> {
           ),
         ),
         IconBtn('plus',
-            size: kMobile ? 44 : 38,
-            iconSize: kMobile ? 21 : 17,
+            size: kMobile ? 52 : 38,
+            iconSize: kMobile ? 25 : 17,
             tooltip: 'New session',
             onTap: _newSessionFlow),
       ]),
@@ -639,8 +641,9 @@ class _DesktopShellState extends State<DesktopShell> {
       onLongPress: () => _tabMenu(i),
       child: Container(
         key: key,
-        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 3),
-        padding: const EdgeInsets.only(left: 11, right: 5),
+        margin: EdgeInsets.symmetric(
+            vertical: kMobile ? 7 : 6, horizontal: 3),
+        padding: EdgeInsets.only(left: kMobile ? 13 : 11, right: 5),
         constraints: const BoxConstraints(maxWidth: 210),
         decoration: BoxDecoration(
           color: active ? AppColors.surface2 : Colors.transparent,
