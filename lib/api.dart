@@ -68,8 +68,8 @@ class DaemonClient {
     return FileContent.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
   }
 
-  /// Upload image/file bytes; returns the absolute path on the daemon (which the
-  /// agent can then view with read_image).
+  /// The current message attachments are uploaded before send; audio is
+  /// transcribed by the daemon after the message arrives.
   /// Upload [bytes]. With [dir] set, saves into that directory under [name]
   /// (file-explorer upload); otherwise a temp path (chat attachment).
   Future<String> uploadFile(List<int> bytes,

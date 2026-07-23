@@ -16,6 +16,7 @@ dependencies:
   shared_preferences: ^2.3.0
   flutter_zxing: ^2.3.0
   permission_handler: ^12.0.3
+  record: ^6.2.1
   google_fonts: ^8.1.0
   flutter_animate: ^4.5.2
   flutter_markdown_plus: ^1.0.7
@@ -34,6 +35,7 @@ dependencies:
   open_filex: ^4.7.0
   video_player: ^2.11.1
   chewie: ^1.13.1
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:

@@ -127,18 +127,22 @@ ThemeData buildAppTheme() {
     ),
     splashColor: AppColors.surface3.withValues(alpha: 0.4),
     highlightColor: AppColors.surface3.withValues(alpha: 0.3),
-    hoverColor: AppColors.surface3.withValues(alpha: 0.35), // desktop hover raise on every InkWell
+    hoverColor: AppColors.surface3
+        .withValues(alpha: 0.35), // desktop hover raise on every InkWell
     // Popovers/menus: surface1 card look everywhere (never default Material).
     popupMenuTheme: PopupMenuThemeData(
       color: AppColors.surface1,
       elevation: 8,
       shadowColor: Colors.black54,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.md), side: const BorderSide(color: AppColors.border2)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(R.md),
+          side: const BorderSide(color: AppColors.border2)),
     ),
     textTheme: _allRegular(GoogleFonts.geistTextTheme(base.textTheme)
         .apply(bodyColor: AppColors.fg1, displayColor: AppColors.fg1)),
     // Subtle dividers everywhere (incl. PopupMenuDivider) — no bright lines.
-    dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 1, space: 12),
+    dividerTheme: const DividerThemeData(
+        color: AppColors.border, thickness: 1, space: 12),
   );
 }
 
@@ -146,11 +150,21 @@ ThemeData buildAppTheme() {
 TextTheme _allRegular(TextTheme t) {
   TextStyle? r(TextStyle? s) => s?.copyWith(fontWeight: FontWeight.w400);
   return t.copyWith(
-    displayLarge: r(t.displayLarge), displayMedium: r(t.displayMedium), displaySmall: r(t.displaySmall),
-    headlineLarge: r(t.headlineLarge), headlineMedium: r(t.headlineMedium), headlineSmall: r(t.headlineSmall),
-    titleLarge: r(t.titleLarge), titleMedium: r(t.titleMedium), titleSmall: r(t.titleSmall),
-    bodyLarge: r(t.bodyLarge), bodyMedium: r(t.bodyMedium), bodySmall: r(t.bodySmall),
-    labelLarge: r(t.labelLarge), labelMedium: r(t.labelMedium), labelSmall: r(t.labelSmall),
+    displayLarge: r(t.displayLarge),
+    displayMedium: r(t.displayMedium),
+    displaySmall: r(t.displaySmall),
+    headlineLarge: r(t.headlineLarge),
+    headlineMedium: r(t.headlineMedium),
+    headlineSmall: r(t.headlineSmall),
+    titleLarge: r(t.titleLarge),
+    titleMedium: r(t.titleMedium),
+    titleSmall: r(t.titleSmall),
+    bodyLarge: r(t.bodyLarge),
+    bodyMedium: r(t.bodyMedium),
+    bodySmall: r(t.bodySmall),
+    labelLarge: r(t.labelLarge),
+    labelMedium: r(t.labelMedium),
+    labelSmall: r(t.labelSmall),
   );
 }
 
@@ -192,8 +206,16 @@ IconData iconFor(String name) {
       return Icons.done_all_rounded;
     case 'stop':
       return IconsaxPlusLinear.stop;
+    case 'play':
+      return Icons.play_arrow_rounded;
+    case 'pause':
+      return Icons.pause_rounded;
     case 'send':
       return IconsaxPlusLinear.arrow_up_3;
+    case 'mic':
+      return Icons.mic_none_rounded;
+    case 'mic-off':
+      return Icons.mic_off_rounded;
     case 'shield':
       return IconsaxPlusLinear.shield_tick;
     case 'folder':

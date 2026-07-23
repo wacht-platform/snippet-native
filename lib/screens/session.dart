@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../api.dart';
@@ -26,20 +31,32 @@ class SessionScreen extends StatefulWidget {
   final String sessionId;
   final String title;
   final String? profile;
+
   /// True when shown as the main pane of the desktop shell (hides its own
   /// back/home chrome — navigation lives in the sidebar).
   final bool embedded;
+
   /// When embedded in a narrow desktop shell, opens the collapsed sidebar drawer.
   final VoidCallback? onMenu;
+
   /// When set, opening a file from the Files browser opens it as a shell tab
   /// instead of pushing an editor route.
   final void Function(String path, String name)? onOpenFileTab;
-  const SessionScreen({super.key, required this.client, required this.sessionId, required this.title, this.profile, this.embedded = false, this.onMenu, this.onOpenFileTab});
+  const SessionScreen(
+      {super.key,
+      required this.client,
+      required this.sessionId,
+      required this.title,
+      this.profile,
+      this.embedded = false,
+      this.onMenu,
+      this.onOpenFileTab});
   @override
   State<SessionScreen> createState() => _SessionScreenState();
 }
 
-class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserver {
+class _SessionScreenState extends State<SessionScreen>
+    with WidgetsBindingObserver {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
   // Outbound payloads queued while the socket is down; flushed in order on the
@@ -56,6 +73,20 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   String? _currentProfile;
   final _input = TextEditingController();
   final _scroll = ScrollController();
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  StreamSubscription<Amplitude>? _amplitudeSub;
+  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<Duration>? _durationSub;
+  Timer? _recordingTimer;
+  bool _isRecording = false;
+  bool _isPlayingRecording = false;
+  String? _recordingPath;
+  Duration _recordingElapsed = Duration.zero;
+  Duration _playbackPosition = Duration.zero;
+  Duration _playbackDuration = Duration.zero;
+  final List<double> _waveform = [];
   // Held while status == running — not sent until the run ends (TUI/desktop parity).
   // Cancel drops locally only; these never hit the daemon's pending_inputs.
   final List<String> _queued = [];
@@ -66,8 +97,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   // How many user turns (typed or steered) the daemon has echoed into the event
   // log — the FIFO baseline for retiring optimistic bubbles (see the socket
   // handler; count-based, not text-based, so daemon-side trimming can't strand one).
-  static int _userEchoCount(List<Map<String, dynamic>> events) =>
-      events.where((e) => e['kind'] == 'user_input' || e['kind'] == 'steer').length;
+  static int _userEchoCount(List<Map<String, dynamic>> events) => events
+      .where((e) => e['kind'] == 'user_input' || e['kind'] == 'steer')
+      .length;
   // Big-paste interception: a paste arrives as ONE controller change, so an
   // insertion this large can't be typing — pull it out of the field and attach
   // it as a text file instead (through the same _ingest pipeline as any file).
@@ -94,7 +126,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       p++;
     }
     var s = 0;
-    while (s < prev.length - p && s < now.length - p && prev[prev.length - 1 - s] == now[now.length - 1 - s]) {
+    while (s < prev.length - p &&
+        s < now.length - p &&
+        prev[prev.length - 1 - s] == now[now.length - 1 - s]) {
       s++;
     }
     final inserted = now.substring(p, now.length - s);
@@ -112,15 +146,21 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     _restoringInput = false;
     _lastInput = prev;
     final name = 'paste-${++_pasteN}.txt';
-    _ingest([(name: name, localPath: null, readBytes: () async => Uint8List.fromList(utf8.encode(inserted)))]);
+    _ingest([
+      (
+        name: name,
+        localPath: null,
+        readBytes: () async => Uint8List.fromList(utf8.encode(inserted))
+      )
+    ]);
     _toast('Pasted text attached ($lines lines)');
   }
 
-  // Pending attachments (images + files, up to 10): each uploads to the daemon
+  // Pending attachments (images + files, up to 5): each uploads to the daemon
   // and is referenced in the next message. Images → read_image, files → read.
   final List<_Attachment> _attachments = [];
   bool get _anyUploading => _attachments.any((a) => a.uploading);
-  static const int _maxAttachments = 10;
+  static const int _maxAttachments = 5;
   bool _didInitialScroll = false;
   // Auto-reconnect: backoff timer + attempt counter; _closed stops retries on leave.
   Timer? _reconnectTimer;
@@ -172,6 +212,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     }
     _send(m);
   }
+
   late String _title;
   // Tracks the last status so we can detect running → paused and flush _queued.
   String? _prevStatus;
@@ -183,6 +224,22 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     _lastInput = _input.text;
     _input.addListener(_interceptBigPaste);
     WidgetsBinding.instance.addObserver(this);
+    _playerStateSub = _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        _isPlayingRecording = state == PlayerState.playing;
+        if (state == PlayerState.completed) {
+          _isPlayingRecording = false;
+          _playbackPosition = _playbackDuration;
+        }
+      });
+    });
+    _positionSub = _audioPlayer.onPositionChanged.listen((position) {
+      if (mounted) setState(() => _playbackPosition = position);
+    });
+    _durationSub = _audioPlayer.onDurationChanged.listen((duration) {
+      if (mounted) setState(() => _playbackDuration = duration);
+    });
     _connect();
     _loadModel();
     _openKey = '${widget.client.baseUrl}|${widget.sessionId}';
@@ -302,7 +359,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           final j = jsonDecode(msg as String) as Map<String, dynamic>;
           if (!mounted) return;
           final cur = _state;
-          final next = (j['wire'] == 'delta' && cur != null) ? cur.applyDelta(j) : HarnessState.fromJson(j);
+          final next = (j['wire'] == 'delta' && cur != null)
+              ? cur.applyDelta(j)
+              : HarnessState.fromJson(j);
           // Drift check: our event log must line up with the server's count — a
           // mismatch (dropped/bad frame) resyncs via reconnect, since a fresh
           // socket's first frame is always a full snapshot.
@@ -357,7 +416,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
               _pending.removeAt(0);
             }
           } else if (j['wire'] != 'delta') {
-            _pending.clear(); // first-ever snapshot: nothing optimistic predates it
+            _pending
+                .clear(); // first-ever snapshot: nothing optimistic predates it
           }
           // First full snapshot after a (re)connect is authoritative: anything
           // still in _pending was never received by the server — resend it so a
@@ -375,7 +435,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             // A decision still pending while the snapshot STILL shows the run
             // waiting means it never landed — resend it. (If it had landed, the
             // status/clear above already dropped it, so no double-approve.)
-            if (_pendingDecision != null && next.status == 'waiting_for_input') {
+            if (_pendingDecision != null &&
+                next.status == 'waiting_for_input') {
               final payload = jsonEncode(_pendingDecision);
               try {
                 ch.sink.add(payload);
@@ -386,7 +447,10 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           }
           setState(() {
             _state = next;
-            _title = next.title ?? (next.userRequest.trim().isEmpty ? widget.title : next.userRequest);
+            _title = next.title ??
+                (next.userRequest.trim().isEmpty
+                    ? widget.title
+                    : next.userRequest);
           });
           // Re-arm (or cancel) the ack watchdog against the new _pending state.
           _armAckWatchdog();
@@ -396,13 +460,19 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
               // Jump to the bottom on open; re-jump to catch late layout growth
               // (markdown/code blocks measure after the first frame).
               _toBottom(jump: true);
-              Future.delayed(const Duration(milliseconds: 120), () { if (mounted) _toBottom(jump: true); });
-              Future.delayed(const Duration(milliseconds: 350), () { if (mounted) _toBottom(jump: true); });
+              Future.delayed(const Duration(milliseconds: 120), () {
+                if (mounted) _toBottom(jump: true);
+              });
+              Future.delayed(const Duration(milliseconds: 350), () {
+                if (mounted) _toBottom(jump: true);
+              });
             } else if (follow) {
               // Jump (not animate) so it reaches the true bottom even as a streaming
               // reply keeps growing; a short re-jump catches late markdown layout.
               _toBottom(jump: true);
-              Future.delayed(const Duration(milliseconds: 100), () { if (mounted && _stickToBottom) _toBottom(jump: true); });
+              Future.delayed(const Duration(milliseconds: 100), () {
+                if (mounted && _stickToBottom) _toBottom(jump: true);
+              });
             }
           });
         } catch (_) {
@@ -473,7 +543,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     if (jump) {
       _scroll.jumpTo(target);
     } else {
-      _scroll.animateTo(target, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+      _scroll.animateTo(target,
+          duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
     }
   }
 
@@ -530,7 +601,16 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
 
   bool _isImageName(String n) {
     final l = n.toLowerCase();
-    return const ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.heic', '.heif'].any(l.endsWith);
+    return const [
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
+      '.webp',
+      '.bmp',
+      '.heic',
+      '.heif'
+    ].any(l.endsWith);
   }
 
   // `+` tapped: desktop opens a file picker directly; mobile shows a small
@@ -544,13 +624,15 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       _pickFiles();
       return;
     }
-    final choice = await showAppSheet<String>(context, title: 'Add context', child: Row(children: [
-      _ctxOption('camera', 'Camera', 'camera'),
-      const SizedBox(width: 10),
-      _ctxOption('image', 'Photos', 'photos'),
-      const SizedBox(width: 10),
-      _ctxOption('file', 'Files', 'files'),
-    ]));
+    final choice = await showAppSheet<String>(context,
+        title: 'Add context',
+        child: Row(children: [
+          _ctxOption('camera', 'Camera', 'camera'),
+          const SizedBox(width: 10),
+          _ctxOption('image', 'Photos', 'photos'),
+          const SizedBox(width: 10),
+          _ctxOption('file', 'Files', 'files'),
+        ]));
     if (choice == 'camera') {
       _pickCamera();
     } else if (choice == 'photos') {
@@ -558,6 +640,251 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     } else if (choice == 'files') {
       _pickFiles();
     }
+  }
+
+  Future<void> _onMicTap() async {
+    if (_isRecording) {
+      await _stopRecording();
+    } else {
+      await _startRecording();
+    }
+  }
+
+  Future<void> _startRecording() async {
+    if (!kMobile) return;
+    final granted = await Permission.microphone.request();
+    if (!granted.isGranted) {
+      _toast(granted.isPermanentlyDenied
+          ? 'Microphone permission is blocked; enable it in app settings.'
+          : 'Microphone permission is required.');
+      if (granted.isPermanentlyDenied) await openAppSettings();
+      return;
+    }
+    try {
+      // Starting a new take replaces an unconfirmed take only after the user
+      // explicitly chose to record again.
+      if (_recordingPath != null) await _discardRecording();
+      final tempDir = await getTemporaryDirectory();
+      final path =
+          '${tempDir.path}/snippet-voice-${DateTime.now().microsecondsSinceEpoch}.m4a';
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 128000,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+        path: path,
+      );
+      if (!await _recorder.isRecording()) {
+        _toast('Could not start recording.');
+        return;
+      }
+      _amplitudeSub?.cancel();
+      _amplitudeSub = _recorder
+          .onAmplitudeChanged(const Duration(milliseconds: 120))
+          .listen((a) {
+        final level = ((a.current + 60) / 60).clamp(0.04, 1.0).toDouble();
+        if (!mounted) return;
+        setState(() {
+          _waveform.add(level);
+          // Keep a denser rolling waveform so the bars stay close together
+          // when the strip spans the full composer width.
+          if (_waveform.length > 180) _waveform.removeAt(0);
+        });
+      });
+      _recordingTimer?.cancel();
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) {
+          setState(() => _recordingElapsed += const Duration(seconds: 1));
+        }
+      });
+      if (mounted) {
+        setState(() {
+          _recordingPath = path;
+          _isRecording = true;
+          _recordingElapsed = Duration.zero;
+          _waveform
+            ..clear()
+            ..add(0.08);
+        });
+      }
+    } catch (e) {
+      _toast('Could not start recording: $e');
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (!_isRecording) return;
+    if (mounted) setState(() => _isRecording = false);
+    _amplitudeSub?.cancel();
+    _amplitudeSub = null;
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    try {
+      final stoppedPath = await _recorder.stop();
+      final path = stoppedPath ?? _recordingPath;
+      if (path == null) {
+        _toast('No recording was captured.');
+        return;
+      }
+      final file = File(path);
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        await _discardRecording();
+        _toast('The recording was empty.');
+        return;
+      }
+      if (mounted) setState(() => _recordingPath = path);
+    } catch (e) {
+      _toast('Could not finish recording: $e');
+    }
+  }
+
+  Future<void> _toggleRecordingPlayback() async {
+    final path = _recordingPath;
+    if (path == null || _isRecording) return;
+    try {
+      if (_isPlayingRecording) {
+        await _audioPlayer.pause();
+      } else if (_audioPlayer.state == PlayerState.paused) {
+        await _audioPlayer.resume();
+      } else {
+        await _audioPlayer.play(DeviceFileSource(path));
+      }
+    } catch (e) {
+      _toast('Could not play recording: $e');
+    }
+  }
+
+  Future<void> _confirmRecording() async {
+    final path = _recordingPath;
+    if (path == null || _isRecording) return;
+    try {
+      final bytes = await File(path).readAsBytes();
+      if (bytes.isEmpty) {
+        await _discardRecording();
+        _toast('The recording was empty.');
+        return;
+      }
+      await _ingest([
+        (
+          name: 'voice-${DateTime.now().microsecondsSinceEpoch}.m4a',
+          localPath: path,
+          readBytes: () async => bytes,
+        )
+      ]);
+      await _audioPlayer.stop();
+      if (mounted) {
+        setState(() {
+          _recordingPath = null;
+          _waveform.clear();
+          _playbackPosition = Duration.zero;
+          _playbackDuration = Duration.zero;
+          _isPlayingRecording = false;
+        });
+      }
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (e) {
+      _toast('Could not attach recording: $e');
+    }
+  }
+
+  Future<void> _discardRecording() async {
+    final path = _recordingPath;
+    _amplitudeSub?.cancel();
+    _amplitudeSub = null;
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    try {
+      await _audioPlayer.stop();
+    } catch (_) {}
+    if (path != null) {
+      try {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() {
+        _isRecording = false;
+        _recordingPath = null;
+        _recordingElapsed = Duration.zero;
+        _playbackPosition = Duration.zero;
+        _playbackDuration = Duration.zero;
+        _waveform.clear();
+        _isPlayingRecording = false;
+      });
+    }
+  }
+
+  String _audioTime(Duration d) {
+    final seconds = d.inSeconds.clamp(0, 5999);
+    final minutes = seconds ~/ 60;
+    final remainder = seconds % 60;
+    return '$minutes:${remainder.toString().padLeft(2, '0')}';
+  }
+
+  Widget _recordingPanel() {
+    final reviewing = !_isRecording && _recordingPath != null;
+    final position = reviewing ? _playbackPosition : _recordingElapsed;
+    final samples = List<double>.of(_waveform);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(R.md),
+        border: Border.all(
+            color: _isRecording ? AppColors.accentLine : AppColors.border),
+      ),
+      child: Row(children: [
+        IconBtn(
+          reviewing ? (_isPlayingRecording ? 'pause' : 'play') : 'stop',
+          size: 36,
+          iconSize: 19,
+          active: _isRecording || _isPlayingRecording,
+          tooltip: _isRecording
+              ? 'Stop and review'
+              : (_isPlayingRecording ? 'Pause' : 'Play recording'),
+          onTap: _isRecording ? _stopRecording : _toggleRecordingPlayback,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            SizedBox(
+              height: 34,
+              child: CustomPaint(painter: _WaveformPainter(samples)),
+            ),
+            const SizedBox(height: 3),
+            Row(children: [
+              Text(_isRecording ? 'Recording' : 'Voice note',
+                  style: sans(11,
+                      color: _isRecording ? AppColors.accent : AppColors.fg3)),
+              const Spacer(),
+              Text(_audioTime(position), style: mono(11, color: AppColors.fg3)),
+            ]),
+          ]),
+        ),
+        const SizedBox(width: 6),
+        if (reviewing) ...[
+          IconBtn('trash',
+              size: 36,
+              iconSize: 18,
+              tooltip: 'Discard recording',
+              onTap: _discardRecording),
+          const SizedBox(width: 2),
+          IconBtn('check',
+              size: 36,
+              iconSize: 19,
+              active: true,
+              tooltip: 'Use recording',
+              onTap: _confirmRecording),
+        ],
+      ]),
+    );
   }
 
   Widget _ctxOption(String icon, String label, String value) {
@@ -570,7 +897,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           onTap: () => Navigator.pop(context, value),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 16),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(R.md), border: Border.all(color: AppColors.border)),
+            decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(R.md),
+                border: Border.all(color: AppColors.border)),
             child: Column(children: [
               AppIcon(icon, size: 22, color: AppColors.fg2),
               const SizedBox(height: 8),
@@ -585,7 +914,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   Future<void> _pickFiles() async {
     FilePickerResult? res;
     try {
-      res = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true, type: FileType.any);
+      res = await FilePicker.platform
+          .pickFiles(allowMultiple: true, withData: true, type: FileType.any);
     } catch (e) {
       _toast('$e');
       return;
@@ -595,25 +925,38 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         .map((f) => (
               name: f.name,
               localPath: f.path,
-              readBytes: () async => f.bytes ?? await File(f.path!).readAsBytes(),
+              readBytes: () async =>
+                  f.bytes ?? await File(f.path!).readAsBytes(),
             ))
         .toList());
   }
 
   Future<void> _pickPhotos() async {
-    final xs = await ImagePicker().pickMultiImage(imageQuality: 85, maxWidth: 2200);
+    final xs =
+        await ImagePicker().pickMultiImage(imageQuality: 85, maxWidth: 2200);
     if (xs.isEmpty) return;
-    await _ingest(xs.map((x) => (name: x.name, localPath: x.path, readBytes: x.readAsBytes)).toList());
+    await _ingest(xs
+        .map((x) => (name: x.name, localPath: x.path, readBytes: x.readAsBytes))
+        .toList());
   }
 
   Future<void> _pickCamera() async {
-    final x = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 85, maxWidth: 2200);
+    final x = await ImagePicker().pickImage(
+        source: ImageSource.camera, imageQuality: 85, maxWidth: 2200);
     if (x == null) return;
-    await _ingest([(name: x.name, localPath: x.path, readBytes: x.readAsBytes)]);
+    await _ingest(
+        [(name: x.name, localPath: x.path, readBytes: x.readAsBytes)]);
   }
 
   // Create attachment chips for the picked items (capped to 10 total) and upload each.
-  Future<void> _ingest(List<({String name, String? localPath, Future<Uint8List> Function() readBytes})> picked) async {
+  Future<void> _ingest(
+      List<
+              ({
+                String name,
+                String? localPath,
+                Future<Uint8List> Function() readBytes
+              })>
+          picked) async {
     final remaining = _maxAttachments - _attachments.length;
     if (remaining <= 0) return;
     var items = picked;
@@ -621,7 +964,12 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       items = items.take(remaining).toList();
       _toast('Added $remaining (max $_maxAttachments).');
     }
-    final entries = items.map((p) => _Attachment(name: p.name, isImage: _isImageName(p.name), localPath: p.localPath)).toList();
+    final entries = items
+        .map((p) => _Attachment(
+            name: p.name,
+            isImage: _isImageName(p.name),
+            localPath: p.localPath))
+        .toList();
     if (entries.isEmpty) return;
     setState(() => _attachments.addAll(entries));
     for (var i = 0; i < entries.length; i++) {
@@ -663,6 +1011,22 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     if (mounted) toast(context, m);
   }
 
+  Future<void> _disposeRecorder() async {
+    try {
+      if (_isRecording) await _recorder.cancel();
+    } catch (_) {}
+    final pendingPath = _recordingPath;
+    if (pendingPath != null) {
+      try {
+        final file = File(pendingPath);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
+    try {
+      await _recorder.dispose();
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _closed = true;
@@ -697,10 +1061,18 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     }
     _input.dispose();
     _scroll.dispose();
+    _amplitudeSub?.cancel();
+    _recordingTimer?.cancel();
+    _playerStateSub?.cancel();
+    _positionSub?.cancel();
+    _durationSub?.cancel();
+    unawaited(_audioPlayer.dispose());
+    unawaited(_disposeRecorder());
     super.dispose();
   }
 
-  bool _pendingApproval(List<Map<String, dynamic>> events) => _pendingApprovalTotal(events) > 0;
+  bool _pendingApproval(List<Map<String, dynamic>> events) =>
+      _pendingApprovalTotal(events) > 0;
 
   // How many tool calls this batch is awaiting approval (0 = none pending). Drives
   // whether "Approve all" is shown — it only makes sense with more than one.
@@ -726,7 +1098,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       backgroundColor: readingBg,
       body: SafeArea(
         bottom: false,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (kMobile)
             _mobileHeader(s, running, waiting)
           else
@@ -745,39 +1118,55 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           Expanded(
             child: Stack(children: [
               _centerWide(s == null
-                ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg3)))
-                : NotificationListener<ScrollNotification>(
-                    onNotification: _onScroll,
-                    // ONE SelectionArea over the whole transcript: continuous
-                    // selection across paragraphs, markdown blocks, and messages
-                    // (per-widget SelectableText could never cross its own bounds).
-                    child: SelectionArea(
-                    child: ListView(
-                    controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
-                    children: [
-                      if (items.isEmpty && !running)
-                        const EmptyState(icon: 'terminal', title: 'Session ready', body: 'Send a task to get started.'),
-                      ...items,
-                      // Optimistic bubbles for messages sent but not yet echoed.
-                      // Pass full payload so Bubble can render attach pills.
-                      for (final p in _pending)
-                        Opacity(opacity: 0.5, child: Padding(padding: const EdgeInsets.only(bottom: 12), child: Bubble(mine: true, text: p))),
-                      if (running) ...[const SizedBox(height: 12), const _TypingDots()],
-                      if (_queued.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        for (var qi = 0; qi < _queued.length; qi++)
-                          _QueuedBubble(
-                            text: _queuedText(_queued[qi]),
-                            images: _queuedAttachCounts(_queued[qi]).$1,
-                            files: _queuedAttachCounts(_queued[qi]).$2,
-                            onCancel: () => _cancelQueuedAt(qi),
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
-                )),
+                  ? const Center(
+                      child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: AppColors.fg3)))
+                  : NotificationListener<ScrollNotification>(
+                      onNotification: _onScroll,
+                      // ONE SelectionArea over the whole transcript: continuous
+                      // selection across paragraphs, markdown blocks, and messages
+                      // (per-widget SelectableText could never cross its own bounds).
+                      child: SelectionArea(
+                        child: ListView(
+                          controller: _scroll,
+                          padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+                          children: [
+                            if (items.isEmpty && !running)
+                              const EmptyState(
+                                  icon: 'terminal',
+                                  title: 'Session ready',
+                                  body: 'Send a task to get started.'),
+                            ...items,
+                            // Optimistic bubbles for messages sent but not yet echoed.
+                            // Pass full payload so Bubble can render attach pills.
+                            for (final p in _pending)
+                              Opacity(
+                                  opacity: 0.5,
+                                  child: Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 12),
+                                      child: Bubble(mine: true, text: p))),
+                            if (running) ...[
+                              const SizedBox(height: 12),
+                              const _TypingDots()
+                            ],
+                            if (_queued.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              for (var qi = 0; qi < _queued.length; qi++)
+                                _QueuedBubble(
+                                  text: _queuedText(_queued[qi]),
+                                  images: _queuedAttachCounts(_queued[qi]).$1,
+                                  files: _queuedAttachCounts(_queued[qi]).$2,
+                                  onCancel: () => _cancelQueuedAt(qi),
+                                ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    )),
               // Floating "jump to latest": scrolling up unpins auto-follow, and a
               // streaming reply then grows silently — give a one-tap way back.
               if (!_stickToBottom && s != null)
@@ -786,7 +1175,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                   bottom: 12,
                   child: Material(
                     color: AppColors.surface2,
-                    shape: const CircleBorder(side: BorderSide(color: AppColors.border)),
+                    shape: const CircleBorder(
+                        side: BorderSide(color: AppColors.border)),
                     elevation: 3,
                     child: InkWell(
                       customBorder: const CircleBorder(),
@@ -797,7 +1187,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                       },
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: AppIcon('chevron-down', size: 18, color: AppColors.fg2),
+                        child: AppIcon('chevron-down',
+                            size: 18, color: AppColors.fg2),
                       ),
                     ),
                   ),
@@ -810,12 +1201,15 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           if (waiting && _pendingApproval(events))
             _centerWide(Padding(
               padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
-              child: _ApprovalBar(onSend: _sendDecision, showApproveAll: _pendingApprovalTotal(events) > 1),
+              child: _ApprovalBar(
+                  onSend: _sendDecision,
+                  showApproveAll: _pendingApprovalTotal(events) > 1),
             ))
           else if (waiting && s?.pendingQuestion != null)
             _centerWide(Padding(
               padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
-              child: _QuestionBar(question: s!.pendingQuestion!, onSend: _sendDecision),
+              child: _QuestionBar(
+                  question: s!.pendingQuestion!, onSend: _sendDecision),
             )),
           _centerWide(_inputBar(running)),
         ]),
@@ -826,7 +1220,10 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
 
   Future<void> _renameCurrent() async {
     final title = await promptText(context,
-        title: 'Rename session', initial: _title, hint: 'New title', saveLabel: 'Rename');
+        title: 'Rename session',
+        initial: _title,
+        hint: 'New title',
+        saveLabel: 'Rename');
     if (title == null) return;
     try {
       await widget.client.renameSession(widget.sessionId, title);
@@ -839,7 +1236,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   // On desktop, keep chat content to a comfortable reading width (centered),
   // rather than stretching across the whole pane.
   Widget _centerWide(Widget child) => widget.embedded
-      ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: child))
+      ? Center(
+          child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 820), child: child))
       : child;
 
   // Mobile chat header: a back button that returns to the session list, the
@@ -872,19 +1271,27 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             borderRadius: BorderRadius.circular(R.sm),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(_title.isEmpty ? 'session' : _title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: sans(16, weight: FontWeight.w600, color: AppColors.fg1)),
-                const SizedBox(height: 2),
-                Text(facts.join(' · '),
-                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: sans(11.5, color: AppColors.fg3)),
-              ]),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_title.isEmpty ? 'session' : _title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: sans(16,
+                            weight: FontWeight.w600, color: AppColors.fg1)),
+                    const SizedBox(height: 2),
+                    Text(facts.join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: sans(11.5, color: AppColors.fg3)),
+                  ]),
             ),
           ),
         ),
-        if (running) IconBtn('stop', tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
+        if (running)
+          IconBtn('stop',
+              tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
       ]),
     );
   }
@@ -903,14 +1310,23 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       // are pushed to the extreme right.
       child: Row(children: [
         if (widget.onMenu != null) ...[
-          IconBtn('sidebar', size: 30, iconSize: 16, tooltip: 'Sidebar', onTap: widget.onMenu),
+          IconBtn('sidebar',
+              size: 30, iconSize: 16, tooltip: 'Sidebar', onTap: widget.onMenu),
           const SizedBox(width: 4),
         ] else
           const SizedBox(width: 2),
         Expanded(
-          child: Text(_title.isEmpty ? 'session' : _title, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(16.5, weight: FontWeight.w600, color: AppColors.fg1)),
+          child: Text(_title.isEmpty ? 'session' : _title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: sans(16.5, weight: FontWeight.w600, color: AppColors.fg1)),
         ),
-        if (running) IconBtn('stop', size: 30, iconSize: 16, tooltip: 'Stop', onTap: () => _send({'kind': 'interrupt'})),
+        if (running)
+          IconBtn('stop',
+              size: 30,
+              iconSize: 16,
+              tooltip: 'Stop',
+              onTap: () => _send({'kind': 'interrupt'})),
         _menu(s),
       ]),
     );
@@ -918,16 +1334,20 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
 
   Widget _menu(HarnessState? s) {
     final view = View.of(context);
-    final desktop = view.physicalSize.width / view.devicePixelRatio >= kDesktopBreakpoint;
+    final desktop =
+        view.physicalSize.width / view.devicePixelRatio >= kDesktopBreakpoint;
     if (!desktop) {
-      return IconBtn('more-vertical', tooltip: 'Actions', onTap: () => _openActions(s));
+      return IconBtn('more-vertical',
+          tooltip: 'Actions', onTap: () => _openActions(s));
     }
     return PopupMenuButton<VoidCallback>(
       color: AppColors.surface1,
       elevation: 8,
       constraints: const BoxConstraints(minWidth: 220, maxWidth: 260),
       menuPadding: const EdgeInsets.symmetric(vertical: 4),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(R.md), side: const BorderSide(color: AppColors.border2)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(R.md),
+          side: const BorderSide(color: AppColors.border2)),
       icon: const AppIcon('more-vertical', color: AppColors.fg2),
       tooltip: 'Actions',
       onSelected: (fn) => fn(),
@@ -956,7 +1376,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   List<PopupMenuEntry<VoidCallback>> _actionItems(HarnessState? s) {
     final manual = (s?.approvalMode ?? 'auto') == 'manual';
     final ws = s?.workspace ?? '';
-    PopupMenuItem<VoidCallback> item(String icon, String label, VoidCallback fn, {String? value}) =>
+    PopupMenuItem<VoidCallback> item(String icon, String label, VoidCallback fn,
+            {String? value}) =>
         PopupMenuItem<VoidCallback>(
           value: fn,
           height: 38,
@@ -964,8 +1385,10 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           child: Row(children: [
             AppIcon(icon, size: 14, color: AppColors.fg2),
             const SizedBox(width: 10),
-            Expanded(child: Text(label, style: sans(12.5, color: AppColors.fg1))),
-            if (value != null) Text(value, style: mono(11, color: AppColors.fg4)),
+            Expanded(
+                child: Text(label, style: sans(12.5, color: AppColors.fg1))),
+            if (value != null)
+              Text(value, style: mono(11, color: AppColors.fg4)),
           ]),
         );
     return [
@@ -976,19 +1399,40 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         _toast(manual ? 'Approval: auto' : 'Approval: ask');
       }, value: manual ? 'Ask' : 'Auto'),
       (s?.goal?.ongoing ?? false)
-          ? item('zap', 'Cancel goal', _cancelGoal, value: s!.goal!.paused ? 'paused' : 'running')
+          ? item('zap', 'Cancel goal', _cancelGoal,
+              value: s!.goal!.paused ? 'paused' : 'running')
           : item('zap', 'Set goal', _setGoal),
       if ((s?.lanes.isNotEmpty ?? false))
         item('layers', 'Lanes', _showLanes,
             value: '${s!.lanes.where((l) => l.running).length} running'),
       const PopupMenuDivider(),
-      item('git-branch', 'Git', () => presentScreen(context, builder: (_, close) => GitScreen(client: widget.client, sessionId: widget.sessionId, onClose: close))),
+      item(
+          'git-branch',
+          'Git',
+          () => presentScreen(context,
+              builder: (_, close) => GitScreen(
+                  client: widget.client,
+                  sessionId: widget.sessionId,
+                  onClose: close))),
       item('folder', 'Browse', () {
         final name = lastPathSegment(ws, ifEmpty: 'Files');
-        presentScreen(context, builder: (_, close) => FileExplorer(client: widget.client, title: name, start: ws.isEmpty ? null : ws, onClose: close, onOpenFile: widget.onOpenFileTab));
+        presentScreen(context,
+            builder: (_, close) => FileExplorer(
+                client: widget.client,
+                title: name,
+                start: ws.isEmpty ? null : ws,
+                onClose: close,
+                onOpenFile: widget.onOpenFileTab));
       }),
       item('terminal', 'Run command', _showExec),
-      item('list', 'Processes', () => presentScreen(context, builder: (_, close) => ProcessesScreen(client: widget.client, sessionId: widget.sessionId, onClose: close))),
+      item(
+          'list',
+          'Processes',
+          () => presentScreen(context,
+              builder: (_, close) => ProcessesScreen(
+                  client: widget.client,
+                  sessionId: widget.sessionId,
+                  onClose: close))),
       const PopupMenuDivider(),
       item('minimize', 'Compact history', () {
         _send({'kind': 'compact'});
@@ -1007,49 +1451,78 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       f();
     }
 
-    showAppSheet(context, title: 'Actions', child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SectionLabel('Session'),
-        _actionTile('cpu', 'Switch model', value: _modelLabel, onTap: () => run(_switchModel)),
-        _actionTile('edit', 'Rename session', onTap: () => run(_renameCurrent)),
-        _actionTile('shield', 'Approval mode', value: manual ? 'Ask' : 'Auto', onTap: () => run(() {
-          _send({'kind': 'set_mode', 'value': manual ? 'auto' : 'manual'});
-          _toast(manual ? 'Approval: auto' : 'Approval: ask');
-        })),
-        (s?.goal?.ongoing ?? false)
-            ? _actionTile('zap', 'Cancel goal', value: s!.goal!.paused ? 'paused' : 'running', onTap: () => run(_cancelGoal))
-            : _actionTile('zap', 'Set goal', onTap: () => run(_setGoal)),
-        if ((s?.lanes.isNotEmpty ?? false))
-          _actionTile('layers', 'Lanes',
-              value: '${s!.lanes.where((l) => l.running).length} running',
-              onTap: () => run(_showLanes)),
-        const SizedBox(height: 12),
-        const SectionLabel('Workspace'),
-        _actionTile('git-branch', 'Git', onTap: () => run(() => presentScreen(context,
-            builder: (_, close) => GitScreen(client: widget.client, sessionId: widget.sessionId, onClose: close)))),
-        _actionTile('folder', 'Open files', onTap: () => run(() {
-          final name = lastPathSegment(ws, ifEmpty: 'Files');
-          presentScreen(context, builder: (_, close) => FileExplorer(client: widget.client, title: name, start: ws.isEmpty ? null : ws, onClose: close, onOpenFile: widget.onOpenFileTab));
-        })),
-        _actionTile('terminal', 'Run command', onTap: () => run(_showExec)),
-        _actionTile('list', 'Processes', onTap: () => run(() => presentScreen(context,
-            builder: (_, close) => ProcessesScreen(client: widget.client, sessionId: widget.sessionId, onClose: close)))),
-        const SizedBox(height: 12),
-        const SectionLabel('History'),
-        _actionTile('minimize', 'Compact history', onTap: () => run(() {
-          _send({'kind': 'compact'});
-          _toast('Compacting history');
-        })),
-        _actionTile('history', 'Checkpoints', onTap: () => run(_showCheckpoints)),
-        _actionTile('activity', 'Usage', onTap: () => run(_showUsage)),
-        const SizedBox(height: 4),
-      ],
-    ));
+    showAppSheet(context,
+        title: 'Actions',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SectionLabel('Session'),
+            _actionTile('cpu', 'Switch model',
+                value: _modelLabel, onTap: () => run(_switchModel)),
+            _actionTile('edit', 'Rename session',
+                onTap: () => run(_renameCurrent)),
+            _actionTile('shield', 'Approval mode',
+                value: manual ? 'Ask' : 'Auto',
+                onTap: () => run(() {
+                      _send({
+                        'kind': 'set_mode',
+                        'value': manual ? 'auto' : 'manual'
+                      });
+                      _toast(manual ? 'Approval: auto' : 'Approval: ask');
+                    })),
+            (s?.goal?.ongoing ?? false)
+                ? _actionTile('zap', 'Cancel goal',
+                    value: s!.goal!.paused ? 'paused' : 'running',
+                    onTap: () => run(_cancelGoal))
+                : _actionTile('zap', 'Set goal', onTap: () => run(_setGoal)),
+            if ((s?.lanes.isNotEmpty ?? false))
+              _actionTile('layers', 'Lanes',
+                  value: '${s!.lanes.where((l) => l.running).length} running',
+                  onTap: () => run(_showLanes)),
+            const SizedBox(height: 12),
+            const SectionLabel('Workspace'),
+            _actionTile('git-branch', 'Git',
+                onTap: () => run(() => presentScreen(context,
+                    builder: (_, close) => GitScreen(
+                        client: widget.client,
+                        sessionId: widget.sessionId,
+                        onClose: close)))),
+            _actionTile('folder', 'Open files',
+                onTap: () => run(() {
+                      final name = lastPathSegment(ws, ifEmpty: 'Files');
+                      presentScreen(context,
+                          builder: (_, close) => FileExplorer(
+                              client: widget.client,
+                              title: name,
+                              start: ws.isEmpty ? null : ws,
+                              onClose: close,
+                              onOpenFile: widget.onOpenFileTab));
+                    })),
+            _actionTile('terminal', 'Run command', onTap: () => run(_showExec)),
+            _actionTile('list', 'Processes',
+                onTap: () => run(() => presentScreen(context,
+                    builder: (_, close) => ProcessesScreen(
+                        client: widget.client,
+                        sessionId: widget.sessionId,
+                        onClose: close)))),
+            const SizedBox(height: 12),
+            const SectionLabel('History'),
+            _actionTile('minimize', 'Compact history',
+                onTap: () => run(() {
+                      _send({'kind': 'compact'});
+                      _toast('Compacting history');
+                    })),
+            _actionTile('history', 'Checkpoints',
+                onTap: () => run(_showCheckpoints)),
+            _actionTile('activity', 'Usage', onTap: () => run(_showUsage)),
+            const SizedBox(height: 4),
+          ],
+        ));
   }
 
-  Widget _actionTile(String icon, String label, {String? value, required VoidCallback onTap}) {
+  Widget _actionTile(String icon, String label,
+      {String? value, required VoidCallback onTap}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
@@ -1065,12 +1538,16 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                 width: 30,
                 height: 30,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(color: AppColors.surface3, borderRadius: BorderRadius.circular(R.sm)),
+                decoration: BoxDecoration(
+                    color: AppColors.surface3,
+                    borderRadius: BorderRadius.circular(R.sm)),
                 child: AppIcon(icon, size: 15, color: AppColors.fg2),
               ),
               const SizedBox(width: 11),
-              Expanded(child: Text(label, style: sans(13, color: AppColors.fg1))),
-              if (value != null) Text(value, style: mono(11, color: AppColors.fg3)),
+              Expanded(
+                  child: Text(label, style: sans(13, color: AppColors.fg1))),
+              if (value != null)
+                Text(value, style: mono(11, color: AppColors.fg3)),
             ]),
           ),
         ),
@@ -1081,33 +1558,61 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   Widget _statusStrip(HarnessState? s, bool running) {
     final chips = <Widget>[
       Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 7, height: 7, decoration: BoxDecoration(color: running ? AppColors.run : AppColors.fg2, shape: BoxShape.circle)),
+        Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+                color: running ? AppColors.run : AppColors.fg2,
+                shape: BoxShape.circle)),
         const SizedBox(width: 7),
-        Text(running ? 'Running' : 'Idle', style: sans(12.5, weight: FontWeight.w600, color: running ? AppColors.run : AppColors.fg2)),
+        Text(running ? 'Running' : 'Idle',
+            style: sans(12.5,
+                weight: FontWeight.w600,
+                color: running ? AppColors.run : AppColors.fg2)),
       ]),
     ];
     if (s != null && s.workspace.isNotEmpty) {
-      chips.add(_StatMeta(icon: 'folder', label: lastPathSegment(s.workspace, ifEmpty: s.workspace)));
+      chips.add(_StatMeta(
+          icon: 'folder',
+          label: lastPathSegment(s.workspace, ifEmpty: s.workspace)));
     }
-    if (_modelLabel != null) chips.add(_StatMeta(icon: 'cpu', label: _modelLabel!));
+    if (_modelLabel != null)
+      chips.add(_StatMeta(icon: 'cpu', label: _modelLabel!));
     if (s != null) {
       if (s.contextWindow > 0 && s.lastPromptTokens > 0) {
-        chips.add(_StatMeta(icon: 'activity', label: '${(s.lastPromptTokens / s.contextWindow * 100).clamp(0, 999).round()}% ctx'));
+        chips.add(_StatMeta(
+            icon: 'activity',
+            label:
+                '${(s.lastPromptTokens / s.contextWindow * 100).clamp(0, 999).round()}% ctx'));
       }
-      if (s.totalTokens > 0) chips.add(_StatMeta(icon: 'zap', label: '${fmtSi(s.totalTokens)} tok'));
-      chips.add(_StatMeta(icon: 'shield', label: s.approvalMode == 'auto' ? 'Auto-approve' : 'Ask', tone: s.approvalMode == 'auto' ? 'accent' : 'default'));
+      if (s.totalTokens > 0)
+        chips.add(_StatMeta(icon: 'zap', label: '${fmtSi(s.totalTokens)} tok'));
+      chips.add(_StatMeta(
+          icon: 'shield',
+          label: s.approvalMode == 'auto' ? 'Auto-approve' : 'Ask',
+          tone: s.approvalMode == 'auto' ? 'accent' : 'default'));
       // Show for ANY provider that reported limits, not just ChatGPT/Codex.
       final rp = s.ratePrimary;
-      if (rp != null) chips.add(_StatMeta(icon: 'clipboard', label: '${rateWindowLabel(rp.windowMinutes)} · ${rp.leftPercent.round()}%', tone: 'run'));
+      if (rp != null)
+        chips.add(_StatMeta(
+            icon: 'clipboard',
+            label:
+                '${rateWindowLabel(rp.windowMinutes)} · ${rp.leftPercent.round()}%',
+            tone: 'run'));
     }
     return Container(
       height: 44,
-      decoration: const BoxDecoration(color: AppColors.surface1, border: Border(bottom: BorderSide(color: AppColors.border))),
+      decoration: const BoxDecoration(
+          color: AppColors.surface1,
+          border: Border(bottom: BorderSide(color: AppColors.border))),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(children: [
-          for (var i = 0; i < chips.length; i++) ...[if (i > 0) const SizedBox(width: 12), chips[i]],
+          for (var i = 0; i < chips.length; i++) ...[
+            if (i > 0) const SizedBox(width: 12),
+            chips[i]
+          ],
         ]),
       ),
     );
@@ -1116,7 +1621,11 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   Widget _disconnectedBanner() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(color: AppColors.dangerBg, border: Border(bottom: BorderSide(color: AppColors.danger.withValues(alpha: 0.25)))),
+      decoration: BoxDecoration(
+          color: AppColors.dangerBg,
+          border: Border(
+              bottom:
+                  BorderSide(color: AppColors.danger.withValues(alpha: 0.25)))),
       child: Row(children: [
         const AppIcon('wifi-off', size: 15, color: AppColors.danger),
         const SizedBox(width: 9),
@@ -1134,7 +1643,9 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const AppIcon('refresh', size: 13, color: AppColors.danger),
             const SizedBox(width: 5),
-            Text('Retry now', style: sans(12, weight: FontWeight.w600, color: AppColors.danger)),
+            Text('Retry now',
+                style:
+                    sans(12, weight: FontWeight.w600, color: AppColors.danger)),
           ]),
         ),
       ]),
@@ -1144,67 +1655,100 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
   // Live send-enabled check — read at tap/submit time and inside the
   // ValueListenableBuilder below, so typing never has to setState the screen.
   bool get _canSend =>
-      (_input.text.trim().isNotEmpty || _attachments.any((a) => a.remotePath != null)) &&
+      (_input.text.trim().isNotEmpty ||
+          _attachments.any((a) => a.remotePath != null)) &&
       !_anyUploading;
 
   Widget _inputBar(bool running) {
     return Container(
-      padding: EdgeInsets.fromLTRB(12, 4, 12, 8 + MediaQuery.of(context).padding.bottom),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (_attachments.isNotEmpty) _attachmentBar(),
-        // Roomier composer: the text field gets its own line, with a control
-        // row (attach · send) beneath it — bigger, and closer in feel to a
-        // modern chat composer while staying in our design language.
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.surface2,
-            border: Border.all(color: AppColors.border),
-            borderRadius: BorderRadius.circular(R.card),
-          ),
-          padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            // Cmd/Ctrl+Enter sends (handy on desktop where Enter inserts a newline).
-            CallbackShortcuts(
-              bindings: {
-                const SingleActivator(LogicalKeyboardKey.enter, meta: true): () { if (_canSend) _sendMessage(); },
-                const SingleActivator(LogicalKeyboardKey.enter, control: true): () { if (_canSend) _sendMessage(); },
-              },
-              child: TextField(
-                controller: _input,
-                minLines: 1,
-                maxLines: 8,
-                cursorColor: AppColors.accent,
-                // No onChanged setState: rebuilding the WHOLE screen (incl. the
-                // transcript) per keystroke caused typing lag in long sessions.
-                // The send button listens to the controller directly below.
-                onSubmitted: (_) => _sendMessage(),
-                style: sans(15, height: 1.45, color: AppColors.fg1),
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                  border: InputBorder.none,
-                  hintText: 'Message snippet…',
-                  hintStyle: sans(15, color: AppColors.fg4),
-                ),
+      padding: EdgeInsets.fromLTRB(
+          12, 4, 12, 8 + MediaQuery.of(context).padding.bottom),
+      child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_attachments.isNotEmpty) _attachmentBar(),
+            if (_isRecording || _recordingPath != null) _recordingPanel(),
+            // Roomier composer: the text field gets its own line, with a control
+            // row (attach · send) beneath it — bigger, and closer in feel to a
+            // modern chat composer while staying in our design language.
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(R.card),
               ),
+              padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Cmd/Ctrl+Enter sends (handy on desktop where Enter inserts a newline).
+                    CallbackShortcuts(
+                      bindings: {
+                        const SingleActivator(LogicalKeyboardKey.enter,
+                            meta: true): () {
+                          if (_canSend) _sendMessage();
+                        },
+                        const SingleActivator(LogicalKeyboardKey.enter,
+                            control: true): () {
+                          if (_canSend) _sendMessage();
+                        },
+                      },
+                      child: TextField(
+                        controller: _input,
+                        minLines: 1,
+                        maxLines: 8,
+                        cursorColor: AppColors.accent,
+                        // No onChanged setState: rebuilding the WHOLE screen (incl. the
+                        // transcript) per keystroke caused typing lag in long sessions.
+                        // The send button listens to the controller directly below.
+                        onSubmitted: (_) => _sendMessage(),
+                        style: sans(15, height: 1.45, color: AppColors.fg1),
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 4),
+                          border: InputBorder.none,
+                          hintText: 'Message snippet…',
+                          hintStyle: sans(15, color: AppColors.fg4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Controls grouped bottom-right (attach next to send) rather than
+                    // split to opposite corners — reads more balanced under the field.
+                    Row(children: [
+                      const Spacer(),
+                      IconBtn('plus',
+                          size: 36,
+                          iconSize: 21,
+                          tooltip: 'Attach',
+                          onTap: _onAttachTap),
+                      if (kMobile) ...[
+                        const SizedBox(width: 2),
+                        IconBtn(
+                          _isRecording ? 'mic-off' : 'mic',
+                          size: 36,
+                          iconSize: 21,
+                          active: _isRecording,
+                          tooltip:
+                              _isRecording ? 'Stop recording' : 'Record voice',
+                          onTap: _onMicTap,
+                        ),
+                      ],
+                      const SizedBox(width: 2),
+                      // Only the send button re-renders as text changes.
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _input,
+                        builder: (_, __, ___) => _SendBtn(
+                            enabled: _canSend,
+                            onTap: _canSend ? _sendMessage : null),
+                      ),
+                    ]),
+                  ]),
             ),
-            const SizedBox(height: 8),
-            // Controls grouped bottom-right (attach next to send) rather than
-            // split to opposite corners — reads more balanced under the field.
-            Row(children: [
-              const Spacer(),
-              IconBtn('plus', size: 36, iconSize: 21, tooltip: 'Attach', onTap: _onAttachTap),
-              const SizedBox(width: 2),
-              // Only the send button re-renders as text changes.
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _input,
-                builder: (_, __, ___) =>
-                    _SendBtn(enabled: _canSend, onTap: _canSend ? _sendMessage : null),
-              ),
-            ]),
           ]),
-        ),
-      ]),
     );
   }
 
@@ -1229,7 +1773,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
     final body = thumb
         ? ClipRRect(
             borderRadius: BorderRadius.circular(R.sm),
-            child: Image.file(File(a.localPath!), width: 60, height: 60, fit: BoxFit.cover),
+            child: Image.file(File(a.localPath!),
+                width: 60, height: 60, fit: BoxFit.cover),
           )
         : Container(
             width: 118,
@@ -1241,11 +1786,14 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
               border: Border.all(color: AppColors.border),
             ),
             child: Row(children: [
-              AppIcon(a.isImage ? 'image' : 'file', size: 15, color: AppColors.fg3),
+              AppIcon(a.isImage ? 'image' : 'file',
+                  size: 15, color: AppColors.fg3),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(a.name,
-                    maxLines: 3, overflow: TextOverflow.ellipsis, style: sans(10.5, height: 1.25, color: AppColors.fg2)),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: sans(10.5, height: 1.25, color: AppColors.fg2)),
               ),
             ]),
           );
@@ -1254,9 +1802,15 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       if (a.uploading)
         Positioned.fill(
           child: Container(
-            decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(R.sm)),
+            decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(R.sm)),
             alignment: Alignment.center,
-            child: const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fg2)),
+            child: const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.fg2)),
           ),
         ),
       Positioned(
@@ -1267,7 +1821,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           onTap: () => setState(() => _attachments.remove(a)),
           child: Container(
             padding: const EdgeInsets.all(3),
-            decoration: const BoxDecoration(color: Colors.black87, shape: BoxShape.circle),
+            decoration: const BoxDecoration(
+                color: Colors.black87, shape: BoxShape.circle),
             child: const AppIcon('x', size: 11, color: AppColors.fg1),
           ),
         ),
@@ -1319,7 +1874,10 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           {
             final p = pending;
             if (p != null) {
-              run.add(DenseToolRow(tool: _s(p['tool_name']), args: p['arguments'], result: e['result']));
+              run.add(DenseToolRow(
+                  tool: _s(p['tool_name']),
+                  args: p['arguments'],
+                  result: e['result']));
               pending = null;
             } else {
               final name = _s(e['tool_name']);
@@ -1330,23 +1888,29 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         case 'user_input':
         case 'steer':
           endTools();
-          out.add(Padding(padding: const EdgeInsets.only(top: 2, bottom: 14), child: Bubble(mine: true, text: _s(e['text']))));
+          out.add(Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 14),
+              child: Bubble(mine: true, text: _s(e['text']))));
         case 'assistant_text':
           endTools();
-          out.add(Padding(padding: const EdgeInsets.only(top: 2, bottom: 14), child: Bubble(mine: false, text: _s(e['text']))));
+          out.add(Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 14),
+              child: Bubble(mine: false, text: _s(e['text']))));
         case 'model_error':
           endTools();
           out.add(NoteLine(_s(e['message']), error: true));
         case 'invalid_tool_call':
           endTools();
-          out.add(NoteLine('invalid ${_s(e['tool_name'])}: ${_s(e['error'])}', error: true));
+          out.add(NoteLine('invalid ${_s(e['tool_name'])}: ${_s(e['error'])}',
+              error: true));
         case 'note':
           endTools();
           final entry = _s(e['entry']);
           out.add(_NoteLine(entry));
         case 'system_decision':
           endTools();
-          out.add(SystemRow(step: _s(e['step']), reasoning: _s(e['reasoning'])));
+          out.add(
+              SystemRow(step: _s(e['step']), reasoning: _s(e['reasoning'])));
         case 'file_presented':
           endTools();
           out.add(_presentedFileCard(_s(e['path']), _s(e['caption'])));
@@ -1364,20 +1928,32 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
           // The spawn card already tracks this lane live — only render a card
           // here if the spawn row is gone (e.g. compacted away).
           if (!laneRowsShown.contains(id)) {
-            out.add(LaneCard(title: _s(e['title']), live: () => liveLane(id), summary: _s(e['summary'])));
+            out.add(LaneCard(
+                title: _s(e['title']),
+                live: () => liveLane(id),
+                summary: _s(e['summary'])));
           }
         case 'user_question':
           endTools();
           final qd = e['questions'];
           final qs = (qd is Map ? qd['questions'] : null) as List?;
-          final txt = (qs != null && qs.isNotEmpty && qs.first is Map) ? _s((qs.first as Map)['text']) : '';
+          final txt = (qs != null && qs.isNotEmpty && qs.first is Map)
+              ? _s((qs.first as Map)['text'])
+              : '';
           if (txt.isNotEmpty) {
             out.add(Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const AppIcon('corner-down-right', size: 15, color: AppColors.run),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const AppIcon('corner-down-right',
+                    size: 15, color: AppColors.run),
                 const SizedBox(width: 8),
-                Expanded(child: Text(txt, style: sans(13.5, height: 1.45, weight: FontWeight.w500, color: AppColors.fg2))),
+                Expanded(
+                    child: Text(txt,
+                        style: sans(13.5,
+                            height: 1.45,
+                            weight: FontWeight.w500,
+                            color: AppColors.fg2))),
               ]),
             ));
           }
@@ -1464,7 +2040,8 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                   borderRadius: BorderRadius.circular(R.sm)),
             ),
             child: Text('Download',
-                style: sans(12, weight: FontWeight.w600, color: AppColors.accentFg)),
+                style: sans(12,
+                    weight: FontWeight.w600, color: AppColors.accentFg)),
           ),
         ]),
       ),
@@ -1475,7 +2052,12 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
 
   // Meta-tools have dedicated event rendering, so their generic tool lines are skipped.
   bool _isMetaTool(String n) =>
-      n == 'note' || n == 'ask_user' || n == 'delegate_task' || n == 'complete_goal' || n == 'monitor' || n == 'present_file';
+      n == 'note' ||
+      n == 'ask_user' ||
+      n == 'delegate_task' ||
+      n == 'complete_goal' ||
+      n == 'monitor' ||
+      n == 'present_file';
 
   Future<void> _switchModel() async {
     ServerConfig cfg;
@@ -1486,31 +2068,41 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       return;
     }
     if (!mounted) return;
-    final picked = await showAppSheet<String>(context, title: 'Switch model', child: Column(
-      children: cfg.profiles
-          .map((p) => Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(R.sm),
-                  onTap: () => Navigator.pop(context, p.name),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-                    child: Row(children: [
-                      const AppIcon('cpu', size: 17, color: AppColors.accent),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(p.name, style: sans(13.5, weight: FontWeight.w500, color: AppColors.fg1)),
-                          const SizedBox(height: 2),
-                          Text('${p.provider} · ${p.model}', style: mono(11, color: AppColors.fg3)),
+    final picked = await showAppSheet<String>(context,
+        title: 'Switch model',
+        child: Column(
+          children: cfg.profiles
+              .map((p) => Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(R.sm),
+                      onTap: () => Navigator.pop(context, p.name),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 12),
+                        child: Row(children: [
+                          const AppIcon('cpu',
+                              size: 17, color: AppColors.accent),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(p.name,
+                                      style: sans(13.5,
+                                          weight: FontWeight.w500,
+                                          color: AppColors.fg1)),
+                                  const SizedBox(height: 2),
+                                  Text('${p.provider} · ${p.model}',
+                                      style: mono(11, color: AppColors.fg3)),
+                                ]),
+                          ),
                         ]),
                       ),
-                    ]),
-                  ),
-                ),
-              ))
-          .toList(),
-    ));
+                    ),
+                  ))
+              .toList(),
+        ));
     if (picked == null) return;
     try {
       await widget.client.setSessionModel(widget.sessionId, picked);
@@ -1555,10 +2147,17 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         }
 
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Runs in the session workspace.', style: sans(11.5, color: AppColors.fg3)),
+          Text('Runs in the session workspace.',
+              style: sans(11.5, color: AppColors.fg3)),
           const SizedBox(height: 10),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: AppField(controller: ctrl, mono: true, icon: 'terminal', hint: 'ls -la', onSubmitted: (_) => run())),
+            Expanded(
+                child: AppField(
+                    controller: ctrl,
+                    mono: true,
+                    icon: 'terminal',
+                    hint: 'ls -la',
+                    onSubmitted: (_) => run())),
             const SizedBox(width: 8),
             Btn(busy ? '\u2026' : 'Run', disabled: busy, onTap: run),
           ]),
@@ -1567,8 +2166,12 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: AppColors.surface2, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(R.md)),
-              child: SelectableText(output, style: mono(11.5, height: 1.5, color: AppColors.fg1)),
+              decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(R.md)),
+              child: SelectableText(output,
+                  style: mono(11.5, height: 1.5, color: AppColors.fg1)),
             ),
           ],
         ]);
@@ -1591,130 +2194,195 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       return '${d.inHours}h ${d.inMinutes % 60}m';
     }
 
-    showAppSheet(context, title: 'Lanes', child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final l in lanes.reversed) Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 5),
-              child: Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: l.running
-                      ? AppColors.accent
-                      : (l.status == 'failed' ? AppColors.danger : AppColors.ok),
-                ),
+    showAppSheet(context,
+        title: 'Lanes',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final l in lanes.reversed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: l.running
+                                ? AppColors.accent
+                                : (l.status == 'failed'
+                                    ? AppColors.danger
+                                    : AppColors.ok),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(l.title,
+                                  style: sans(13.5,
+                                      weight: FontWeight.w500,
+                                      color: AppColors.fg1)),
+                              const SizedBox(height: 2),
+                              Text(
+                                l.running
+                                    ? 'running · ${elapsed(l.startedAt)}'
+                                    : (l.summary?.trim().isNotEmpty == true
+                                        ? '${l.status} — ${l.summary}'
+                                        : l.status),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: sans(11.5,
+                                    height: 1.35, color: AppColors.fg3),
+                              ),
+                            ]),
+                      ),
+                    ]),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(l.title, style: sans(13.5, weight: FontWeight.w500, color: AppColors.fg1)),
-                const SizedBox(height: 2),
-                Text(
-                  l.running
-                      ? 'running · ${elapsed(l.startedAt)}'
-                      : (l.summary?.trim().isNotEmpty == true ? '${l.status} — ${l.summary}' : l.status),
-                  maxLines: 2, overflow: TextOverflow.ellipsis,
-                  style: sans(11.5, height: 1.35, color: AppColors.fg3),
-                ),
-              ]),
-            ),
-          ]),
-        ),
-      ],
-    ));
+          ],
+        ));
   }
 
   void _showUsage() {
     final s = _state;
     if (s == null) return;
-    showAppSheet(context, title: 'Usage', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (s.contextWindow > 0) ...[
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('Context window', style: sans(12.5, weight: FontWeight.w500, color: AppColors.fg2)),
-          Text('${fmtSi(s.lastPromptTokens)} / ${fmtSi(s.contextWindow)}', style: mono(11.5, color: AppColors.fg3)),
-        ]),
-        const SizedBox(height: 9),
-        Progress(pct: s.lastPromptTokens / s.contextWindow * 100, height: 9),
-        const SizedBox(height: 7),
-        Text('${(s.lastPromptTokens / s.contextWindow * 100).round()}% used', style: mono(11, color: AppColors.accent)),
-        const SizedBox(height: 18),
-      ],
-      const SectionLabel('Tokens'),
-      const SizedBox(height: 8),
-      Row(children: [
-        Expanded(child: StatTile(label: '↑ Input', value: fmtSi(s.promptTokens))),
-        const SizedBox(width: 8),
-        Expanded(child: StatTile(label: '↓ Output', value: fmtSi(s.completionTokens))),
-      ]),
-      const SizedBox(height: 8),
-      Row(children: [
-        Expanded(child: StatTile(label: '↻ Cached', value: fmtSi(s.cacheReadTokens))),
-        const SizedBox(width: 8),
-        Expanded(child: StatTile(label: 'Total', value: fmtSi(s.totalTokens), accent: true)),
-      ]),
-      if (s.ratePrimary != null || s.rateSecondary != null) ...[
-        const SizedBox(height: 18),
-        const SectionLabel('Rate limits · remaining'),
-        const SizedBox(height: 8),
-        for (final w in [s.ratePrimary, s.rateSecondary])
-          if (w != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 11),
-              child: Builder(builder: (_) {
-                final rem = w.leftPercent;
-                final color = rem < 20 ? AppColors.danger : rem < 50 ? AppColors.run : AppColors.ok;
-                final reset = rateResetLabel(w.resetsAt);
-                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text(rateWindowLabel(w.windowMinutes), style: sans(12, color: AppColors.fg2)),
-                    Text('${rem.round()}% left', style: mono(11, color: color)),
-                  ]),
-                  const SizedBox(height: 6),
-                  Progress(pct: rem, color: color, height: 6),
-                  if (reset != null) ...[
-                    const SizedBox(height: 5),
-                    Text(reset, style: mono(10.5, color: AppColors.fg4)),
-                  ],
-                ]);
-              }),
-            ),
-      ],
-    ]));
+    showAppSheet(context,
+        title: 'Usage',
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (s.contextWindow > 0) ...[
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text('Context window',
+                  style: sans(12.5,
+                      weight: FontWeight.w500, color: AppColors.fg2)),
+              Text('${fmtSi(s.lastPromptTokens)} / ${fmtSi(s.contextWindow)}',
+                  style: mono(11.5, color: AppColors.fg3)),
+            ]),
+            const SizedBox(height: 9),
+            Progress(
+                pct: s.lastPromptTokens / s.contextWindow * 100, height: 9),
+            const SizedBox(height: 7),
+            Text(
+                '${(s.lastPromptTokens / s.contextWindow * 100).round()}% used',
+                style: mono(11, color: AppColors.accent)),
+            const SizedBox(height: 18),
+          ],
+          const SectionLabel('Tokens'),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+                child:
+                    StatTile(label: '↑ Input', value: fmtSi(s.promptTokens))),
+            const SizedBox(width: 8),
+            Expanded(
+                child: StatTile(
+                    label: '↓ Output', value: fmtSi(s.completionTokens))),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+                child: StatTile(
+                    label: '↻ Cached', value: fmtSi(s.cacheReadTokens))),
+            const SizedBox(width: 8),
+            Expanded(
+                child: StatTile(
+                    label: 'Total', value: fmtSi(s.totalTokens), accent: true)),
+          ]),
+          if (s.ratePrimary != null || s.rateSecondary != null) ...[
+            const SizedBox(height: 18),
+            const SectionLabel('Rate limits · remaining'),
+            const SizedBox(height: 8),
+            for (final w in [s.ratePrimary, s.rateSecondary])
+              if (w != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 11),
+                  child: Builder(builder: (_) {
+                    final rem = w.leftPercent;
+                    final color = rem < 20
+                        ? AppColors.danger
+                        : rem < 50
+                            ? AppColors.run
+                            : AppColors.ok;
+                    final reset = rateResetLabel(w.resetsAt);
+                    return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(rateWindowLabel(w.windowMinutes),
+                                    style: sans(12, color: AppColors.fg2)),
+                                Text('${rem.round()}% left',
+                                    style: mono(11, color: color)),
+                              ]),
+                          const SizedBox(height: 6),
+                          Progress(pct: rem, color: color, height: 6),
+                          if (reset != null) ...[
+                            const SizedBox(height: 5),
+                            Text(reset,
+                                style: mono(10.5, color: AppColors.fg4)),
+                          ],
+                        ]);
+                  }),
+                ),
+          ],
+        ]));
   }
 
   void _showCheckpoints() {
     final s = _state;
     if (s == null) return;
     final cps = s.checkpoints.reversed.toList();
-    showAppSheet(context, title: 'Checkpoints', child: Column(children: [
-      if (cps.isEmpty)
-        Padding(padding: const EdgeInsets.all(20), child: Text('No checkpoints yet.', style: sans(12.5, color: AppColors.fg3))),
-      ...cps.map((c) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: AppCard(
-              padding: const EdgeInsets.all(13),
-              onTap: () => _confirmRewind(c),
-              child: Row(children: [
-                Container(width: 34, height: 34, decoration: BoxDecoration(color: AppColors.surface2, borderRadius: BorderRadius.circular(9)), child: const AppIcon('history', size: 17, color: AppColors.fg3)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(c.label.isEmpty ? c.id : c.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: sans(13, weight: FontWeight.w500, height: 1.2, color: AppColors.fg1)),
-                    const SizedBox(height: 3),
-                    Text(c.createdAt, style: mono(11, color: AppColors.fg3)),
+    showAppSheet(context,
+        title: 'Checkpoints',
+        child: Column(children: [
+          if (cps.isEmpty)
+            Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text('No checkpoints yet.',
+                    style: sans(12.5, color: AppColors.fg3))),
+          ...cps.map((c) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: AppCard(
+                  padding: const EdgeInsets.all(13),
+                  onTap: () => _confirmRewind(c),
+                  child: Row(children: [
+                    Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                            color: AppColors.surface2,
+                            borderRadius: BorderRadius.circular(9)),
+                        child: const AppIcon('history',
+                            size: 17, color: AppColors.fg3)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(c.label.isEmpty ? c.id : c.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: sans(13,
+                                    weight: FontWeight.w500,
+                                    height: 1.2,
+                                    color: AppColors.fg1)),
+                            const SizedBox(height: 3),
+                            Text(c.createdAt,
+                                style: mono(11, color: AppColors.fg3)),
+                          ]),
+                    ),
+                    const AppIcon('rotate', size: 16, color: AppColors.fg4),
                   ]),
                 ),
-                const AppIcon('rotate', size: 16, color: AppColors.fg4),
-              ]),
-            ),
-          )),
-    ]));
+              )),
+        ]));
   }
 
   Future<void> _confirmRewind(Checkpoint c) async {
@@ -1722,20 +2390,34 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
       context: context,
       builder: (_) => Dialog(
         backgroundColor: AppColors.surface1,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: AppColors.border2)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: AppColors.border2)),
         child: Padding(
           padding: const EdgeInsets.all(18),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Restore workspace?', style: sans(15, weight: FontWeight.w600, color: AppColors.fg1)),
-            const SizedBox(height: 6),
-            Text('This rolls the workspace back to “${c.label.isEmpty ? c.id : c.label}”. Changes after this point are discarded.', style: sans(12.5, height: 1.5, color: AppColors.fg3)),
-            const SizedBox(height: 14),
-            Row(children: [
-              Expanded(child: Btn('Cancel', variant: BtnVariant.ghost, onTap: () => Navigator.pop(context, false))),
-              const SizedBox(width: 8),
-              Expanded(child: Btn('Restore', onTap: () => Navigator.pop(context, true))),
-            ]),
-          ]),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Restore workspace?',
+                    style: sans(15,
+                        weight: FontWeight.w600, color: AppColors.fg1)),
+                const SizedBox(height: 6),
+                Text(
+                    'This rolls the workspace back to “${c.label.isEmpty ? c.id : c.label}”. Changes after this point are discarded.',
+                    style: sans(12.5, height: 1.5, color: AppColors.fg3)),
+                const SizedBox(height: 14),
+                Row(children: [
+                  Expanded(
+                      child: Btn('Cancel',
+                          variant: BtnVariant.ghost,
+                          onTap: () => Navigator.pop(context, false))),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: Btn('Restore',
+                          onTap: () => Navigator.pop(context, true))),
+                ]),
+              ]),
         ),
       ),
     );
@@ -1752,10 +2434,15 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
 
 class _StatMeta extends StatelessWidget {
   final String icon, label, tone;
-  const _StatMeta({required this.icon, required this.label, this.tone = 'default'});
+  const _StatMeta(
+      {required this.icon, required this.label, this.tone = 'default'});
   @override
   Widget build(BuildContext context) {
-    final c = tone == 'accent' ? AppColors.accent : tone == 'run' ? AppColors.run : AppColors.fg2;
+    final c = tone == 'accent'
+        ? AppColors.accent
+        : tone == 'run'
+            ? AppColors.run
+            : AppColors.fg2;
     return Row(mainAxisSize: MainAxisSize.min, children: [
       AppIcon(icon, size: 14, color: tone == 'default' ? AppColors.fg4 : c),
       const SizedBox(width: 6),
@@ -1770,8 +2457,11 @@ class _TypingDots extends StatefulWidget {
   State<_TypingDots> createState() => _TypingDotsState();
 }
 
-class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat();
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat();
   @override
   void dispose() {
     _c.dispose();
@@ -1787,21 +2477,33 @@ class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderState
         decoration: const BoxDecoration(
           color: AppColors.surface1,
           border: Border.fromBorderSide(BorderSide(color: AppColors.border)),
-          borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16), bottomRight: Radius.circular(16), bottomLeft: Radius.circular(5)),
+          borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
+              bottomRight: Radius.circular(16),
+              bottomLeft: Radius.circular(5)),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: List.generate(3, (i) {
-          return AnimatedBuilder(
-            animation: _c,
-            builder: (_, __) {
-              final t = ((_c.value + i * 0.18) % 1.0);
-              final o = 0.4 + 0.6 * (t < 0.5 ? t * 2 : (1 - t) * 2);
-              return Padding(
-                padding: EdgeInsets.only(right: i < 2 ? 4 : 0),
-                child: Opacity(opacity: o, child: Container(width: 6, height: 6, decoration: const BoxDecoration(color: AppColors.fg3, shape: BoxShape.circle))),
+        child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              return AnimatedBuilder(
+                animation: _c,
+                builder: (_, __) {
+                  final t = ((_c.value + i * 0.18) % 1.0);
+                  final o = 0.4 + 0.6 * (t < 0.5 ? t * 2 : (1 - t) * 2);
+                  return Padding(
+                    padding: EdgeInsets.only(right: i < 2 ? 4 : 0),
+                    child: Opacity(
+                        opacity: o,
+                        child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                                color: AppColors.fg3, shape: BoxShape.circle))),
+                  );
+                },
               );
-            },
-          );
-        })),
+            })),
       ),
     );
   }
@@ -1829,17 +2531,23 @@ class _QueuedBubble extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(width: 5, height: 5, decoration: const BoxDecoration(color: AppColors.fg4, shape: BoxShape.circle)),
+          Container(
+              width: 5,
+              height: 5,
+              decoration: const BoxDecoration(
+                  color: AppColors.fg4, shape: BoxShape.circle)),
           const SizedBox(width: 7),
           Text('QUEUED', style: sans(10, color: AppColors.fg4, spacing: 0.8)),
           const Spacer(),
-          IconBtn('x', size: 26, iconSize: 14, tooltip: 'Cancel', onTap: onCancel),
+          IconBtn('x',
+              size: 26, iconSize: 14, tooltip: 'Cancel', onTap: onCancel),
         ]),
         if (text.isNotEmpty) ...[
           const SizedBox(height: 3),
           Padding(
             padding: const EdgeInsets.only(left: 12),
-            child: Text(text, style: sans(13.5, height: 1.5, color: AppColors.fg3)),
+            child: Text(text,
+                style: sans(13.5, height: 1.5, color: AppColors.fg3)),
           ),
         ],
         if (images + files > 0) ...[
@@ -1877,24 +2585,48 @@ class _ApprovalBarState extends State<_ApprovalBar> {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(color: AppColors.accentBg, border: Border.all(color: AppColors.accentLine), borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(
+          color: AppColors.accentBg,
+          border: Border.all(color: AppColors.accentLine),
+          borderRadius: BorderRadius.circular(14)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Padding(padding: EdgeInsets.only(top: 1), child: AppIcon('shield', size: 16, color: AppColors.accent)),
+          const Padding(
+              padding: EdgeInsets.only(top: 1),
+              child: AppIcon('shield', size: 16, color: AppColors.accent)),
           const SizedBox(width: 9),
-          Expanded(child: Text(_sent ? 'Sending…' : 'Approve this action?', style: sans(13, weight: FontWeight.w600, height: 1.3, color: AppColors.fg1))),
+          Expanded(
+              child: Text(_sent ? 'Sending…' : 'Approve this action?',
+                  style: sans(13,
+                      weight: FontWeight.w600,
+                      height: 1.3,
+                      color: AppColors.fg1))),
         ]),
         const SizedBox(height: 11),
         Opacity(
           opacity: _sent ? 0.5 : 1,
           child: Row(children: [
-            Expanded(child: Btn('Approve', small: true, icon: 'check', onTap: _sent ? null : () => _decide({'kind': 'approve'}))),
+            Expanded(
+                child: Btn('Approve',
+                    small: true,
+                    icon: 'check',
+                    onTap: _sent ? null : () => _decide({'kind': 'approve'}))),
             const SizedBox(width: 8),
             if (widget.showApproveAll) ...[
-              Expanded(child: Btn('Approve all', small: true, variant: BtnVariant.secondary, icon: 'check-check', onTap: _sent ? null : () => _decide({'kind': 'approve_all'}))),
+              Expanded(
+                  child: Btn('Approve all',
+                      small: true,
+                      variant: BtnVariant.secondary,
+                      icon: 'check-check',
+                      onTap: _sent
+                          ? null
+                          : () => _decide({'kind': 'approve_all'}))),
               const SizedBox(width: 8),
             ],
-            Btn('Deny', small: true, variant: BtnVariant.ghost, onTap: _sent ? null : () => _decide({'kind': 'deny'})),
+            Btn('Deny',
+                small: true,
+                variant: BtnVariant.ghost,
+                onTap: _sent ? null : () => _decide({'kind': 'deny'})),
           ]),
         ),
       ]),
@@ -1970,10 +2702,12 @@ class _QuestionBarState extends State<_QuestionBar> {
   bool _sent = false;
 
   List<Map<String, dynamic>> get _questions =>
-      ((widget.question['questions'] as List?) ?? const []).cast<Map<String, dynamic>>();
+      ((widget.question['questions'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>();
 
   String _kind(Map<String, dynamic> q) =>
-      (q['answer_kind'] is Map ? q['answer_kind']['kind'] : null)?.toString() ?? 'free_text';
+      (q['answer_kind'] is Map ? q['answer_kind']['kind'] : null)?.toString() ??
+      'free_text';
 
   @override
   void dispose() {
@@ -1996,7 +2730,9 @@ class _QuestionBarState extends State<_QuestionBar> {
     final multi = _questions.length > 1;
     final parts = _questions.map((q) {
       final id = q['id'].toString();
-      final a = _kind(q) == 'free_text' ? (_text[id]?.text.trim() ?? '') : (_choice[id] ?? '');
+      final a = _kind(q) == 'free_text'
+          ? (_text[id]?.text.trim() ?? '')
+          : (_choice[id] ?? '');
       return multi ? '${q['text']}\n→ $a' : a;
     }).toList();
     widget.onSend({'kind': 'answer', 'value': parts.join('\n\n')});
@@ -2011,10 +2747,14 @@ class _QuestionBarState extends State<_QuestionBar> {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(99),
-              border: Border.all(color: sel ? AppColors.accentLine : AppColors.border),
+              border: Border.all(
+                  color: sel ? AppColors.accentLine : AppColors.border),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-            child: Text(label, style: sans(13, weight: FontWeight.w600, color: sel ? AppColors.accent : AppColors.fg2)),
+            child: Text(label,
+                style: sans(13,
+                    weight: FontWeight.w600,
+                    color: sel ? AppColors.accent : AppColors.fg2)),
           ),
         ),
       );
@@ -2030,12 +2770,21 @@ class _QuestionBarState extends State<_QuestionBar> {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: sel ? AppColors.accentLine : AppColors.border),
+              border: Border.all(
+                  color: sel ? AppColors.accentLine : AppColors.border),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             child: Row(children: [
-              Expanded(child: Text(label, style: sans(14, height: 1.4, weight: FontWeight.w500, color: sel ? AppColors.fg1 : AppColors.fg2))),
-              if (sel) ...[const SizedBox(width: 10), const AppIcon('check', size: 16, color: AppColors.accent)],
+              Expanded(
+                  child: Text(label,
+                      style: sans(14,
+                          height: 1.4,
+                          weight: FontWeight.w500,
+                          color: sel ? AppColors.fg1 : AppColors.fg2))),
+              if (sel) ...[
+                const SizedBox(width: 10),
+                const AppIcon('check', size: 16, color: AppColors.accent)
+              ],
             ]),
           ),
         ),
@@ -2045,19 +2794,23 @@ class _QuestionBarState extends State<_QuestionBar> {
     final id = q['id'].toString();
     final k = _kind(q);
     if (k == 'yes_no' || k == 'confirm') {
-      final opts = k == 'confirm' ? const ['Confirm', 'Cancel'] : const ['Yes', 'No'];
-      final vals = k == 'confirm' ? const ['confirm', 'cancel'] : const ['yes', 'no'];
+      final opts =
+          k == 'confirm' ? const ['Confirm', 'Cancel'] : const ['Yes', 'No'];
+      final vals =
+          k == 'confirm' ? const ['confirm', 'cancel'] : const ['yes', 'no'];
       return [
         Wrap(spacing: 8, children: [
           for (var i = 0; i < opts.length; i++)
-            _chip(opts[i], _choice[id] == vals[i], () => setState(() => _choice[id] = vals[i])),
+            _chip(opts[i], _choice[id] == vals[i],
+                () => setState(() => _choice[id] = vals[i])),
         ]),
       ];
     }
     if (k == 'single_choice') {
       // Each choice is {value, label}; show the label, send the value (matches the
       // TUI). Falling back keeps it robust if one side is missing.
-      final choices = ((q['answer_kind']?['choices'] as List?) ?? const []).map((e) {
+      final choices =
+          ((q['answer_kind']?['choices'] as List?) ?? const []).map((e) {
         if (e is Map) {
           final label = '${e['label'] ?? ''}'.trim();
           final value = '${e['value'] ?? ''}'.trim();
@@ -2072,14 +2825,19 @@ class _QuestionBarState extends State<_QuestionBar> {
           for (final c in choices)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: _choiceRow(c.label, _choice[id] == c.value, () => setState(() => _choice[id] = c.value)),
+              child: _choiceRow(c.label, _choice[id] == c.value,
+                  () => setState(() => _choice[id] = c.value)),
             ),
         ]),
       ];
     }
     _text.putIfAbsent(id, () => TextEditingController());
     return [
-      AppField(controller: _text[id]!, hint: 'Your answer', maxLines: 4, onSubmitted: (_) => _submit()),
+      AppField(
+          controller: _text[id]!,
+          hint: 'Your answer',
+          maxLines: 4,
+          onSubmitted: (_) => _submit()),
     ];
   }
 
@@ -2096,9 +2854,15 @@ class _QuestionBarState extends State<_QuestionBar> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // A quiet eyebrow — accent dot + label — rather than an alarm-triangle box.
         Row(children: [
-          Container(width: 7, height: 7, decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle)),
+          Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                  color: AppColors.accent, shape: BoxShape.circle)),
           const SizedBox(width: 9),
-          Text('NEEDS YOUR INPUT', style: sans(11, weight: FontWeight.w600, spacing: 0.6, color: AppColors.fg3)),
+          Text('NEEDS YOUR INPUT',
+              style: sans(11,
+                  weight: FontWeight.w600, spacing: 0.6, color: AppColors.fg3)),
         ]),
         if (ctx != null && ctx.isNotEmpty && ctx != 'null') ...[
           const SizedBox(height: 12),
@@ -2106,15 +2870,61 @@ class _QuestionBarState extends State<_QuestionBar> {
         ],
         for (final q in _questions) ...[
           const SizedBox(height: 15),
-          Text(q['text']?.toString() ?? '', style: sans(15, weight: FontWeight.w600, height: 1.4, color: AppColors.fg1)),
+          Text(q['text']?.toString() ?? '',
+              style: sans(15,
+                  weight: FontWeight.w600, height: 1.4, color: AppColors.fg1)),
           const SizedBox(height: 11),
           ..._inputFor(q),
         ],
         const SizedBox(height: 16),
-        Btn(_sent ? 'Sending…' : 'Send answer', small: true, icon: 'send', full: true, disabled: !_ready || _sent, onTap: (_ready && !_sent) ? _submit : null),
+        Btn(_sent ? 'Sending…' : 'Send answer',
+            small: true,
+            icon: 'send',
+            full: true,
+            disabled: !_ready || _sent,
+            onTap: (_ready && !_sent) ? _submit : null),
       ]),
     );
   }
+}
+
+/// Paints the sampled microphone amplitude as a compact live waveform.
+class _WaveformPainter extends CustomPainter {
+  final List<double> samples;
+  const _WaveformPainter(this.samples);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.accent
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    if (samples.isEmpty) {
+      canvas.drawLine(
+        Offset(0, size.height / 2),
+        Offset(size.width, size.height / 2),
+        paint..color = AppColors.fg4,
+      );
+      return;
+    }
+    final waveformWidth = math.min(size.width, samples.length * 4.0);
+    for (var i = 0; i < samples.length; i++) {
+      final amplitude = samples[i].clamp(0.04, 1.0).toDouble();
+      final half =
+          (size.height * 0.45 * amplitude).clamp(2.0, size.height * 0.45);
+      final x = i * 4.0 + 2.0;
+      if (x > waveformWidth) break;
+      canvas.drawLine(
+        Offset(x, size.height / 2 - half),
+        Offset(x, size.height / 2 + half),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaveformPainter oldDelegate) =>
+      oldDelegate.samples != samples;
 }
 
 /// A pending composer attachment (image or file) being uploaded to the workspace.
@@ -2143,7 +2953,10 @@ class _SendBtn extends StatelessWidget {
         child: SizedBox(
           width: 38,
           height: 38,
-          child: Center(child: AppIcon('send', size: 18, color: enabled ? AppColors.accentFg : AppColors.fg4)),
+          child: Center(
+              child: AppIcon('send',
+                  size: 18,
+                  color: enabled ? AppColors.accentFg : AppColors.fg4)),
         ),
       ),
     );
