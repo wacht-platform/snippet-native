@@ -82,6 +82,7 @@ class _SessionScreenState extends State<SessionScreen>
   Timer? _recordingTimer;
   bool _isRecording = false;
   bool _isPlayingRecording = false;
+  bool _sendingAudio = false;
   String? _recordingPath;
   Duration _recordingElapsed = Duration.zero;
   Duration _playbackPosition = Duration.zero;
@@ -566,7 +567,21 @@ class _SessionScreenState extends State<SessionScreen>
     }
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
+    // Audio can be sent directly from the composer: stop the live take, upload
+    // it through the normal attachment path, then continue with the same send.
+    if (_sendingAudio) return;
+    if (_isRecording || _recordingPath != null) {
+      _sendingAudio = true;
+      if (mounted) setState(() {});
+      try {
+        if (_isRecording) await _stopRecording();
+        if (_recordingPath != null && !await _confirmRecording()) return;
+      } finally {
+        _sendingAudio = false;
+        if (mounted) setState(() {});
+      }
+    }
     // An upload still in flight would be silently DROPPED (only remotePath'd
     // attachments ship, then the list is cleared). The send button disables via
     // canSend, but keyboard submit bypassed it — guard here, the single choke point.
@@ -757,15 +772,15 @@ class _SessionScreenState extends State<SessionScreen>
     }
   }
 
-  Future<void> _confirmRecording() async {
+  Future<bool> _confirmRecording() async {
     final path = _recordingPath;
-    if (path == null || _isRecording) return;
+    if (path == null || _isRecording) return false;
     try {
       final bytes = await File(path).readAsBytes();
       if (bytes.isEmpty) {
         await _discardRecording();
         _toast('The recording was empty.');
-        return;
+        return false;
       }
       await _ingest([
         (
@@ -786,8 +801,10 @@ class _SessionScreenState extends State<SessionScreen>
       }
       final file = File(path);
       if (await file.exists()) await file.delete();
+      return true;
     } catch (e) {
       _toast('Could not attach recording: $e');
+      return false;
     }
   }
 
@@ -1655,9 +1672,12 @@ class _SessionScreenState extends State<SessionScreen>
   // Live send-enabled check — read at tap/submit time and inside the
   // ValueListenableBuilder below, so typing never has to setState the screen.
   bool get _canSend =>
-      (_input.text.trim().isNotEmpty ||
+      (_isRecording ||
+          _recordingPath != null ||
+          _input.text.trim().isNotEmpty ||
           _attachments.any((a) => a.remotePath != null)) &&
-      !_anyUploading;
+      !_anyUploading &&
+      !_sendingAudio;
 
   Widget _inputBar(bool running) {
     return Container(

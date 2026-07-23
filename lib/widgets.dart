@@ -747,14 +747,21 @@ class _DashedBorder extends CustomPainter {
   bool shouldRepaint(covariant _DashedBorder old) => old.color != color;
 }
 
-/// Internal attachment markers the agent reads but users must never see.
+/// Internal attachment and transcription markers are agent-facing metadata, not
+/// user-facing chat text.
 final RegExp _attachMarkerRe =
     RegExp(r'\[attached (image|file) —[^\]]*\]', multiLine: true);
+final RegExp _audioTranscriptRe = RegExp(
+  r'(?:\r?\n)*\[Audio transcript for [^\]\r\n]+\]\r?\n[\s\S]*$',
+);
 
-/// Strip the internal `[attached …]` markers from displayed text — the attachment
-/// itself is surfaced separately, as a pill on the message (see [Bubble]).
-String hideAttachmentMarkers(String raw) =>
-    raw.replaceAll(_attachMarkerRe, '').trim();
+/// Strip internal attachment/transcription metadata from displayed text. The
+/// original message still contains it when sent to the daemon, so the agent can
+/// use the transcript while the user sees only their own message and attachment.
+String hideAttachmentMarkers(String raw) => raw
+    .replaceAll(_audioTranscriptRe, '')
+    .replaceAll(_attachMarkerRe, '')
+    .trim();
 
 /// Read-only attachment summary on a sent message — icon + count, no emoji.
 /// Images and files each get their own compact pill (matches desktop).
@@ -801,8 +808,7 @@ class Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final matches = _attachMarkerRe.allMatches(text).toList();
-    final shown =
-        matches.isEmpty ? text : text.replaceAll(_attachMarkerRe, '').trim();
+    final shown = hideAttachmentMarkers(text);
     final images = matches.where((m) => m.group(1) == 'image').length;
     final files = matches.length - images;
     // Clean, Claude-style: a readable sender header (no accent bar / outline),
